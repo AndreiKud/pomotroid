@@ -29,6 +29,36 @@ export default {
   },
 
   methods: {
+    prevRound() {
+      if (this.currentRound === 'work' && this.round === 1) {
+        this.$store.dispatch('setCurrentRound', 'long-break')
+        this.$store.dispatch('setMaxTotalWorkRounds')
+        this.$store.dispatch('setMaxRounds')
+        EventBus.$emit('ready-long-break')
+        logger.info('focus round completed')
+        ipcRenderer.send('onBreak', true)
+      } else if (this.currentRound === 'work') {
+        this.$store.dispatch('setCurrentRound', 'short-break')
+        this.$store.dispatch('decrementRound')
+        EventBus.$emit('ready-short-break')
+        logger.info('focus round completed')
+        ipcRenderer.send('onBreak', true)
+      } else if (this.currentRound === 'short-break') {
+        this.$store.dispatch('setCurrentRound', 'work')
+        this.$store.dispatch('decrementTotalWorkRounds')
+        EventBus.$emit('ready-work')
+        logger.info('short break completed')
+        ipcRenderer.send('onBreak', false)
+      } else if (this.currentRound === 'long-break') {
+        this.$store.dispatch('setCurrentRound', 'work')
+        this.$store.dispatch('decrementTotalWorkRounds')
+        EventBus.$emit('ready-work')
+        logger.info('long break completed')
+        ipcRenderer.send('onBreak', false)
+      }
+      this.dispatchTimer()
+    },
+
     checkRound() {
       if (this.currentRound === 'work' && this.round >= this.workRounds) {
         this.$store.dispatch('setCurrentRound', 'long-break')
@@ -57,6 +87,7 @@ export default {
       }
       this.dispatchTimer()
     },
+
     dispatchTimer() {
       EventBus.$emit('timer-init', {
         auto:
@@ -68,6 +99,9 @@ export default {
   },
 
   mounted() {
+    EventBus.$on('timer-prev', () => {
+      this.prevRound()
+    })
     EventBus.$on('timer-completed', () => {
       this.checkRound()
     })

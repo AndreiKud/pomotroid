@@ -18,6 +18,40 @@
       <!-- skip -->
       <div
         class="Icon-wrapper Icon-wrapper--double--left"
+        style="transform: rotate(180deg);"
+        title="Skip the current round"
+        @click="prevRound"
+        v-show="round > 1 || totalWorkRounds > 0"
+      >
+        <svg
+          version="1.2"
+          baseProfile="tiny"
+          id="Layer_1"
+          xmlns="http://www.w3.org/2000/svg"
+          xmlns:xlink="http://www.w3.org/1999/xlink"
+          x="0px"
+          y="0px"
+          viewBox="0 0 8 12"
+          xml:space="preserve"
+          height="15px"
+          class="Icon--skip--reverse"
+        >
+          <polygon
+            fill="var(--color-background-lightest)"
+            points="0,0 0,12 6.1,5.9"
+          />
+          <rect
+            x="6.9"
+            y="0"
+            fill="var(--color-background-lightest)"
+            width="1.1"
+            height="12"
+          />
+        </svg>
+      </div>
+      <!-- skip -->
+      <div
+        class="Icon-wrapper Icon-wrapper--double--left"
         title="Skip the current round"
         @click="skipRound"
       >
@@ -179,6 +213,10 @@ export default {
           this.volumeSliderHidden = true
         }
       }, 6000)
+    },
+
+    prevRound() {
+      EventBus.$emit('timer-prev')
     },
 
     skipRound() {

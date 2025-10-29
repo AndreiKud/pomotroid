@@ -82,6 +82,11 @@ export default {
       updateTrayImage(this.lastElapsed, this.total)
     })
 
+    EventBus.$on('timer-prev', () => {
+      this.paused = true
+      updateTrayImage(this.lastElapsed, this.total)
+    })
+
     EventBus.$on('timer-completed', () => {
       this.paused = true
       updateTrayImage(this.lastElapsed, this.total)

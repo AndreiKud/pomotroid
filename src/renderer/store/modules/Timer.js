@@ -52,6 +52,10 @@ const getters = {
 }
 
 const mutations = {
+  DECREMENT_ROUND(state) {
+    state.round -= 1
+  },
+
   INCREMENT_ROUND(state) {
     state.round += 1
   },
@@ -60,8 +64,20 @@ const mutations = {
     state.round = 1
   },
 
+  SET_MAX_ROUNDS(state) {
+    state.round = state.workRounds
+  },
+
+  DECREMENT_TOTAL_WORK_ROUNDS(state) {
+    state.totalWorkRounds -= 1
+  },
+
   INCREMENT_TOTAL_WORK_ROUNDS(state) {
     state.totalWorkRounds += 1
+  },
+
+  SET_MAX_TOTAL_WORK_ROUNDS(state) {
+    state.totalWorkRounds = state.workRounds
   },
 
   RESET_DEFAULTS(state) {
@@ -109,6 +125,10 @@ const mutations = {
 }
 
 const actions = {
+  decrementRound({ commit }) {
+    commit('DECREMENT_ROUND')
+  },
+
   incrementRound({ commit }) {
     commit('INCREMENT_ROUND')
   },
@@ -117,8 +137,20 @@ const actions = {
     commit('RESET_ROUND')
   },
 
+  setMaxRounds({ commit }) {
+    commit('SET_MAX_ROUNDS')
+  },
+
+  decrementTotalWorkRounds({ commit }) {
+    commit('DECREMENT_TOTAL_WORK_ROUNDS')
+  },
+
   incrementTotalWorkRounds({ commit }) {
     commit('INCREMENT_TOTAL_WORK_ROUNDS')
+  },
+
+  setMaxTotalWorkRounds({ commit }) {
+    commit('SET_MAX_TOTAL_WORK_ROUNDS')
   },
 
   resetDefaults({ commit }) {
