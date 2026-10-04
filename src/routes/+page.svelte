@@ -1,6 +1,6 @@
 <script lang="ts">
   import '../app.css';
-  import { onMount } from 'svelte';
+  import { onMount, tick } from 'svelte';
   import Titlebar from '$lib/components/Titlebar.svelte';
   import Timer from '$lib/components/Timer.svelte';
   import { getSettings, getThemes, onSettingsChanged, onThemesChanged } from '$lib/ipc';
@@ -87,22 +87,23 @@
 
     (async () => {
       try {
-        // Load settings from backend.
-        const s = await getSettings();
+        // Neither request depends on the other; avoid serial IPC before showing the window.
+        const [s, themes] = await Promise.all([getSettings(), getThemes()]);
         settings.set(s);
         localVolume = s.volume;
 
         // Apply the stored locale on mount.
         setLocale(s.language);
-        await info(`[main] settings loaded, locale=${s.language}`);
+        info(`[main] settings loaded, locale=${s.language}`).catch(() => {});
 
         // Load and apply the active theme using OS color scheme.
-        const themes = await getThemes();
         const osDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
         const active = themes.find((t) => t.name === resolveThemeName(s, osDark)) ?? themes[0];
         if (active) applyTheme(active);
+        // Flush the saved locale and settings before the first visible frame.
+        await tick();
         await getCurrentWebviewWindow().show();
-        await info(`[main] initialized, theme=${active?.name ?? 'none'}`);
+        info(`[main] initialized, theme=${active?.name ?? 'none'}`).catch(() => {});
       } catch (e) {
         await logError(`[main] initialization failed: ${e}`);
         throw e;
@@ -193,7 +194,6 @@
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    animation: app-fade-in 0.4s var(--transition-slow) both;
   }
 
   main {

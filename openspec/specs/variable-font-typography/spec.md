@@ -14,6 +14,12 @@ The app SHALL embed Mona Sans as a variable font and apply it as the primary fon
 - **WHEN** any component renders text without an explicit font-family override
 - **THEN** that text SHALL render in Mona Sans
 
+#### Scenario: Embedded fonts are slow to load
+
+- **WHEN** the window is ready but an embedded font has not loaded yet
+- **THEN** timer digits and labels SHALL remain visible using the fallback font
+- **AND** the embedded font SHALL replace the fallback when it becomes available
+
 ### Requirement: Optical sizing adapts automatically to font size
 
 The app SHALL enable `font-optical-sizing: auto` globally so the optical-size axis adjusts letterform contrast and spacing based on each element's rendered font size, including SVG text elements in the stats views.
