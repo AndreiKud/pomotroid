@@ -129,7 +129,12 @@
   });
 </script>
 
-<div class="timer-outer" class:compact={isCompact}>
+<div
+  class="timer-outer"
+  class:compact={isCompact}
+  role="group"
+  aria-label={roundLabel(state.round_type)}
+>
   <div class="timer" style="zoom: {uiScale}; --color-current-round: {roundColor(state.round_type)}">
     <!-- Dial + display stacked (display centered over dial) -->
     <div class="dial-stack">
@@ -138,12 +143,6 @@
     </div>
 
     {#if !isCompact}
-      <!-- Round type label sits below the dial as a normal flex child so it
-           does not affect the dial-stack height used to centre TimerDisplay. -->
-      <div class="round-label" style="color: {roundColor(state.round_type)}">
-        {roundLabel(state.round_type)}
-      </div>
-
       <div class="controls-wrapper">
         <div class="previous-control">
           {#if state.can_go_back}
@@ -291,14 +290,5 @@
     display: flex;
     align-items: center;
     justify-content: center;
-  }
-
-  .round-label {
-    font-size: 0.75rem;
-    font-weight: 600;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    /* Collapse the gap above: the flex gap already provides spacing from the dial. */
-    margin-top: -8px;
   }
 </style>
