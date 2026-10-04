@@ -7,6 +7,7 @@
 ///   Server → Client: `{ "type": "state",       "payload": TimerSnapshot }`              (getState response)
 ///                    `{ "type": "started",      "payload": { "total_secs": u32 } }`     (broadcast)
 ///                    `{ "type": "roundChange",  "payload": TimerSnapshot }`              (broadcast)
+///                    `{ "type": "durationChanged", "payload": TimerSnapshot }`            (broadcast)
 ///                    `{ "type": "paused",       "payload": { "elapsed_secs": u32 } }`   (broadcast)
 ///                    `{ "type": "resumed",      "payload": { "elapsed_secs": u32 } }`   (broadcast)
 ///                    `{ "type": "reset" }`                                               (broadcast)
@@ -57,6 +58,7 @@ pub struct StartedPayload {
 pub enum WsEvent {
     Started { payload: StartedPayload },
     RoundChange { payload: TimerSnapshot },
+    DurationChanged { payload: TimerSnapshot },
     Paused { payload: ElapsedPayload },
     Resumed { payload: ElapsedPayload },
     Reset,
@@ -234,6 +236,10 @@ pub fn broadcast_started(state: &Arc<WsState>, total_secs: u32) {
 /// Broadcast a `roundChange` event to all connected WebSocket clients.
 pub fn broadcast_round_change(state: &Arc<WsState>, snapshot: TimerSnapshot) {
     let _ = state.broadcast_tx.send(WsEvent::RoundChange { payload: snapshot });
+}
+
+pub fn broadcast_duration_changed(state: &Arc<WsState>, snapshot: TimerSnapshot) {
+    let _ = state.broadcast_tx.send(WsEvent::DurationChanged { payload: snapshot });
 }
 
 /// Broadcast a `paused` event to all connected WebSocket clients.

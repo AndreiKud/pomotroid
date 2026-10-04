@@ -22,6 +22,7 @@ pub enum TimerCommand {
     /// Immediately fires a `Complete` event (user-initiated skip).
     Skip,
     Previous,
+    Adjust { delta_secs: i32 },
     /// Change the total duration; moves engine to Idle so caller must Start.
     Reconfigure { duration_secs: u32 },
     /// Update the stored duration without altering phase or elapsed time.
@@ -44,6 +45,7 @@ pub enum TimerEvent {
     Resumed { elapsed_secs: u32 },
     Reset,
     Suspended { elapsed_secs: u32 },
+    DurationChanged { elapsed_secs: u32, total_secs: u32 },
 }
 
 /// Cheap-to-clone handle for sending commands to the engine thread.
@@ -108,6 +110,23 @@ fn request_previous(event_tx: &Sender<TimerEvent>) -> bool {
         && response.recv().unwrap_or(false)
 }
 
+fn adjust_duration(
+    total_secs: &mut u32,
+    elapsed_secs: u32,
+    delta_secs: i32,
+    event_tx: &Sender<TimerEvent>,
+) -> bool {
+    let adjusted = total_secs.saturating_add_signed(delta_secs);
+    if adjusted <= elapsed_secs {
+        // Removing the remaining time is an explicit Next, even from a paused round.
+        let _ = event_tx.send(TimerEvent::Complete { skipped: true });
+        return true;
+    }
+    *total_secs = adjusted;
+    let _ = event_tx.send(TimerEvent::DurationChanged { elapsed_secs, total_secs: adjusted });
+    false
+}
+
 fn run_loop(
     duration_secs: u32,
     event_tx: Sender<TimerEvent>,
@@ -133,6 +152,11 @@ fn run_loop(
                 }
                 Ok(TimerCommand::Reconfigure { duration_secs: d }) => {
                     total_secs = d;
+                    let _ = event_tx.send(TimerEvent::DurationChanged { elapsed_secs, total_secs });
+                    Transition::Stay
+                }
+                Ok(TimerCommand::Adjust { delta_secs }) => {
+                    adjust_duration(&mut total_secs, elapsed_secs, delta_secs, &event_tx);
                     Transition::Stay
                 }
                 Ok(TimerCommand::Prime { duration_secs: d }) => {
@@ -165,6 +189,14 @@ fn run_loop(
 
             // -----------------------------------------------------------------
             Phase::Paused | Phase::Suspended => match cmd_rx.recv() {
+                Ok(TimerCommand::Adjust { delta_secs }) => {
+                    if adjust_duration(&mut total_secs, elapsed_secs, delta_secs, &event_tx) {
+                        elapsed_secs = 0;
+                        Transition::To(Phase::Idle)
+                    } else {
+                        Transition::Stay
+                    }
+                }
                 Ok(TimerCommand::Resume | TimerCommand::WakeResume) => {
                     let _ = event_tx.send(TimerEvent::Resumed { elapsed_secs });
                     Transition::To(Phase::Running(RunningSegment {
@@ -231,6 +263,14 @@ fn run_loop(
                     Err(RecvTimeoutError::Disconnected) => Transition::Break,
 
                     // --- commands ---
+                    Ok(TimerCommand::Adjust { delta_secs }) => {
+                        if adjust_duration(&mut total_secs, elapsed_secs, delta_secs, &event_tx) {
+                            elapsed_secs = 0;
+                            Transition::To(Phase::Idle)
+                        } else {
+                            Transition::Stay
+                        }
+                    }
                     Ok(TimerCommand::Pause) => {
                         let _ = event_tx.send(TimerEvent::Paused { elapsed_secs });
                         Transition::To(Phase::Paused)
@@ -323,6 +363,129 @@ mod tests {
             }
         }
         events
+    }
+
+    fn recv(rx: &Receiver<TimerEvent>) -> TimerEvent {
+        rx.recv_timeout(Duration::from_secs(2)).expect("timer event")
+    }
+
+    fn wait_for_tick(rx: &Receiver<TimerEvent>) -> u32 {
+        loop {
+            if let TimerEvent::Tick { elapsed_secs, .. } = recv(rx) {
+                return elapsed_secs;
+            }
+        }
+    }
+
+    #[test]
+    fn idle_adjustments_accumulate_beyond_the_configured_duration() {
+        let (handle, rx) = spawn(300, TICK);
+        for expected in [360, 420] {
+            handle.send(TimerCommand::Adjust { delta_secs: 60 });
+            assert!(matches!(recv(&rx), TimerEvent::DurationChanged {
+                elapsed_secs: 0, total_secs
+            } if total_secs == expected));
+        }
+        assert!(rx.recv_timeout(TICK * 2).is_err());
+        handle.send(TimerCommand::Start);
+        assert!(matches!(recv(&rx), TimerEvent::Started { total_secs: 420 }));
+        assert_eq!(wait_for_tick(&rx), 1);
+        handle.send(TimerCommand::Shutdown);
+    }
+
+    #[test]
+    fn paused_and_suspended_adjustments_preserve_progress_and_resume() {
+        for suspend in [false, true] {
+            let (handle, rx) = spawn(300, TICK);
+            handle.send(TimerCommand::Start);
+            wait_for_tick(&rx);
+            handle.send(if suspend { TimerCommand::Suspend } else { TimerCommand::Pause });
+            let saved = loop {
+                match recv(&rx) {
+                    TimerEvent::Paused { elapsed_secs } | TimerEvent::Suspended { elapsed_secs } => break elapsed_secs,
+                    TimerEvent::Tick { .. } => {},
+                    other => panic!("unexpected event: {other:?}"),
+                }
+            };
+            for (delta, expected) in [(60, 360), (60, 420), (-60, 360)] {
+                handle.send(TimerCommand::Adjust { delta_secs: delta });
+                assert!(matches!(recv(&rx), TimerEvent::DurationChanged {
+                    elapsed_secs, total_secs
+                } if elapsed_secs == saved && total_secs == expected));
+            }
+            assert!(rx.recv_timeout(TICK * 2).is_err());
+            handle.send(if suspend { TimerCommand::WakeResume } else { TimerCommand::Resume });
+            assert!(matches!(recv(&rx), TimerEvent::Resumed { elapsed_secs } if elapsed_secs == saved));
+            assert!(matches!(recv(&rx), TimerEvent::Tick {
+                elapsed_secs, total_secs: 360
+            } if elapsed_secs == saved + 1));
+            handle.send(TimerCommand::Shutdown);
+        }
+    }
+
+    #[test]
+    fn adjusting_a_running_timer_preserves_elapsed_and_changes_its_deadline() {
+        let (handle, rx) = spawn(65, TICK);
+        handle.send(TimerCommand::Start);
+        wait_for_tick(&rx);
+        handle.send(TimerCommand::Adjust { delta_secs: 60 });
+        let changed_at = loop {
+            match recv(&rx) {
+                TimerEvent::DurationChanged { elapsed_secs, total_secs: 125 } => break elapsed_secs,
+                TimerEvent::Tick { .. } => {},
+                other => panic!("unexpected event: {other:?}"),
+            }
+        };
+        assert!(matches!(recv(&rx), TimerEvent::Tick {
+            elapsed_secs, total_secs: 125
+        } if elapsed_secs == changed_at + 1));
+        handle.send(TimerCommand::Adjust { delta_secs: -60 });
+        handle.send(TimerCommand::Adjust { delta_secs: -60 });
+        let events = collect_until_complete(&rx, Duration::from_secs(2));
+        assert!(events.iter().any(|e| matches!(e, TimerEvent::Tick { elapsed_secs: 5, total_secs: 5 })));
+        assert!(matches!(events.last(), Some(TimerEvent::Complete { skipped: false })));
+        handle.send(TimerCommand::Shutdown);
+    }
+
+    #[test]
+    fn subtracting_all_remaining_time_advances_from_every_phase() {
+        for phase in 0..4 {
+            let (handle, rx) = spawn(60, TICK);
+            if phase > 0 {
+                handle.send(TimerCommand::Start);
+                wait_for_tick(&rx);
+                if phase > 1 {
+                    handle.send(if phase == 2 { TimerCommand::Pause } else { TimerCommand::Suspend });
+                    while !matches!(recv(&rx), TimerEvent::Paused { .. } | TimerEvent::Suspended { .. }) {}
+                }
+            }
+            handle.send(TimerCommand::Adjust { delta_secs: -60 });
+            loop {
+                match recv(&rx) {
+                    TimerEvent::Complete { skipped: true } => break,
+                    TimerEvent::Tick { .. } => {},
+                    other => panic!("unexpected event: {other:?}"),
+                }
+            }
+            handle.send(TimerCommand::Prime { duration_secs: 300 });
+            handle.send(TimerCommand::Start);
+            assert!(matches!(recv(&rx), TimerEvent::Started { total_secs: 300 }));
+            assert!(matches!(recv(&rx), TimerEvent::Tick { elapsed_secs: 1, total_secs: 300 }));
+            handle.send(TimerCommand::Shutdown);
+        }
+    }
+
+    #[test]
+    fn round_reset_discards_extra_time_when_primed_with_settings() {
+        let (handle, rx) = spawn(300, TICK);
+        handle.send(TimerCommand::Adjust { delta_secs: 60 });
+        assert!(matches!(recv(&rx), TimerEvent::DurationChanged { total_secs: 360, .. }));
+        handle.send(TimerCommand::Reset);
+        assert!(matches!(recv(&rx), TimerEvent::Reset));
+        handle.send(TimerCommand::Prime { duration_secs: 300 });
+        handle.send(TimerCommand::Start);
+        assert!(matches!(recv(&rx), TimerEvent::Started { total_secs: 300 }));
+        handle.send(TimerCommand::Shutdown);
     }
 
     #[test]

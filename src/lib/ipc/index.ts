@@ -21,6 +21,8 @@ export const timerReset = () => invoke<void>('timer_reset');
 export const timerRestartRound = () => invoke<void>('timer_restart_round');
 export const timerSkip = () => invoke<void>('timer_skip');
 export const timerPrevious = () => invoke<void>('timer_previous');
+export const timerAdjustTime = (deltaSecs: -60 | 60) =>
+  invoke<void>('timer_adjust_time', { deltaSecs });
 export const getTimerState = () => invoke<TimerState>('timer_get_state');
 
 // --- Settings commands ---
@@ -105,6 +107,17 @@ export const checkUpdate = () => invoke<UpdateInfo | null>('check_update');
 export const installUpdate = () => invoke<void>('install_update');
 
 // --- Event listeners ---
+
+export const onTimerStarted = (
+  cb: (payload: { total_secs: number }) => void
+): Promise<UnlistenFn> => listen<{ total_secs: number }>('timer:started', (e) => cb(e.payload));
+
+export const onTimerDurationChanged = (cb: (state: TimerState) => void): Promise<UnlistenFn> =>
+  listen<TimerState>('timer:duration-changed', (e) => cb(e.payload));
+
+export const onTimerSuspended = (
+  cb: (payload: { elapsed_secs: number }) => void
+): Promise<UnlistenFn> => listen<{ elapsed_secs: number }>('timer:suspended', (e) => cb(e.payload));
 
 export const onTimerTick = (
   cb: (payload: { elapsed_secs: number; total_secs: number }) => void

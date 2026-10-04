@@ -1,5 +1,9 @@
 ## ADDED Requirements
 
+### Requirement: Duration adjustments are broadcast without changing timer phase
+
+When the current round's duration changes, connected clients SHALL receive `{ "type": "durationChanged", "payload": <TimerSnapshot> }`. Both this snapshot and subsequent `getState` responses SHALL contain the adjusted total and preserve the current elapsed time and running/paused state. No `roundChange` SHALL be emitted unless subtracting time exhausts the round.
+
 ### Requirement: Server broadcasts started event when timer starts
 
 When the timer transitions from idle to running, the server SHALL broadcast a `started` message to all connected WebSocket clients carrying the total duration of the round in seconds.

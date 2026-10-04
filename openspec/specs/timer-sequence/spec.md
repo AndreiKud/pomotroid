@@ -169,3 +169,26 @@ Both Back and Next SHALL start the destination round immediately, including when
 ### Requirement: Footer Reset affects only the current round
 
 The footer Reset button SHALL stop the timer and restore the current round's full duration. It SHALL preserve the round type, both counters, and previous-round history. Its tooltip SHALL describe restarting the current round rather than clearing session progress.
+
+### Requirement: Adjust the current round by one minute
+
+The timer dial SHALL provide −1 minute and +1 minute buttons in normal and compact modes. Each press SHALL change the current round's remaining time by 60 seconds without changing elapsed time or the running/paused state. Extra time SHALL be allowed beyond the duration configured in settings. The dial, state queries, tray progress, and recorded session duration SHALL use the adjusted total.
+
+If subtracting a minute leaves no remaining time, the action SHALL behave like Next: advance and start the destination round, including from idle or paused. It SHALL be recorded as a manually skipped round.
+
+Adjustments SHALL NOT change saved settings. Reset, Back, Next, and natural round transitions SHALL restore the relevant configured duration. Unrelated settings changes SHALL NOT discard adjustments.
+
+#### Scenario: Extend a paused break
+
+- **GIVEN** a five-minute break is paused, including before its first tick
+- **WHEN** the user presses +1 minute twice
+- **THEN** the break SHALL have two extra minutes remaining and remain paused
+- **AND** Play SHALL resume it with the adjusted duration
+
+#### Scenario: Shorten an active round
+
+- **GIVEN** a running round has 90 seconds remaining
+- **WHEN** the user presses −1 minute
+- **THEN** it SHALL continue running with 30 seconds remaining
+- **WHEN** the user presses −1 minute again
+- **THEN** the next round SHALL start using its configured duration

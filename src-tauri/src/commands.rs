@@ -45,6 +45,15 @@ pub fn timer_previous(timer: State<'_, TimerController>) {
     timer.previous();
 }
 
+#[tauri::command]
+pub fn timer_adjust_time(delta_secs: i32, timer: State<'_, TimerController>) -> Result<(), String> {
+    if !matches!(delta_secs, -60 | 60) {
+        return Err("Time adjustments must be one minute".into());
+    }
+    timer.adjust_time(delta_secs);
+    Ok(())
+}
+
 /// Restart the current round from zero without advancing the sequence.
 /// Round type and round number are preserved; only elapsed time is reset.
 #[tauri::command]

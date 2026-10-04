@@ -23,6 +23,15 @@ pub fn insert_session(
     Ok(id)
 }
 
+// Keep focus-time statistics aligned with the duration the user actually completed.
+pub fn update_session_duration(conn: &Connection, session_id: i64, duration_secs: u32) -> Result<()> {
+    conn.execute(
+        "UPDATE sessions SET duration_secs = ?1 WHERE id = ?2",
+        params![duration_secs, session_id],
+    )?;
+    Ok(())
+}
+
 /// Updates a session when the round ends (by completion or skip).
 pub fn complete_session(
     conn: &Connection,
@@ -332,6 +341,21 @@ mod tests {
         assert_eq!(stats.total_work_sessions, 0);
         assert_eq!(stats.completed_work_sessions, 0);
         assert_eq!(stats.total_work_secs, 0);
+    }
+
+    #[test]
+    fn stats_use_adjusted_session_duration() {
+        let conn = setup();
+        let extended = insert_session(&conn, "work", 3000).unwrap();
+        update_session_duration(&conn, extended, 3120).unwrap();
+        complete_session(&conn, extended, true).unwrap();
+        assert_eq!(get_all_time_stats(&conn).unwrap().total_work_secs, 3120);
+        let shortened = insert_session(&conn, "work", 3000).unwrap();
+        update_session_duration(&conn, shortened, 2880).unwrap();
+        complete_session(&conn, shortened, true).unwrap();
+        let stats = get_all_time_stats(&conn).unwrap();
+        assert_eq!(stats.completed_work_sessions, 2);
+        assert_eq!(stats.total_work_secs, 6000);
     }
 
     #[test]
