@@ -90,6 +90,17 @@ const MIGRATION_6: &str = "
     INSERT INTO schema_version VALUES (6);
 ";
 
+// Saved default sizes at 1x/2x would otherwise retain the whitespace left by the
+// removed round label. Leave custom sizes and the window position alone.
+const MIGRATION_7: &str = "
+    UPDATE settings
+       SET value = CASE value WHEN '478' THEN '450' WHEN '956' THEN '900' END
+     WHERE key = 'window_height'
+       AND ((value = '478' AND (SELECT value FROM settings WHERE key = 'window_width') = '360')
+         OR (value = '956' AND (SELECT value FROM settings WHERE key = 'window_width') = '720'));
+    INSERT INTO schema_version VALUES (7);
+";
+
 /// Apply any pending migrations. Each migration is wrapped in a transaction
 /// so a partial failure leaves the database unchanged.
 pub fn run(conn: &Connection) -> Result<()> {
@@ -131,6 +142,10 @@ pub fn run(conn: &Connection) -> Result<()> {
         log::info!("[db/migrations] MIGRATION_6 complete");
     }
 
+    if version < 7 {
+        conn.execute_batch(&format!("BEGIN; {MIGRATION_7} COMMIT;"))?;
+    }
+
     Ok(())
 }
 
@@ -166,7 +181,58 @@ mod tests {
         let v: i64 = conn
             .query_row("SELECT MAX(version) FROM schema_version", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(v, 6);
+        assert_eq!(v, 7);
+    }
+
+    #[test]
+    fn smaller_default_window_preserves_custom_geometry() {
+        for (width, height, expected_height) in [
+            (360, 478, 450),
+            (720, 956, 900),
+            (360, 500, 500),
+            (400, 478, 478),
+            (720, 1000, 1000),
+            (800, 956, 956),
+        ] {
+            let conn = Connection::open_in_memory().unwrap();
+            run(&conn).unwrap();
+            conn.execute("DELETE FROM schema_version WHERE version = 7", [])
+                .unwrap();
+            for (key, value) in [
+                ("window_width", width),
+                ("window_height", height),
+                ("window_x", -120),
+                ("window_y", 80),
+            ] {
+                conn.execute(
+                    "INSERT INTO settings (key, value) VALUES (?1, ?2)",
+                    (key, value.to_string()),
+                )
+                .unwrap();
+            }
+
+            run(&conn).unwrap();
+            let read = |key: &str| -> i32 {
+                conn.query_row("SELECT value FROM settings WHERE key = ?1", [key], |r| {
+                    r.get::<_, String>(0)
+                })
+                .unwrap()
+                .parse()
+                .unwrap()
+            };
+            assert_eq!(read("window_width"), width);
+            assert_eq!(read("window_height"), expected_height);
+            assert_eq!(read("window_x"), -120);
+            assert_eq!(read("window_y"), 80);
+
+            conn.execute(
+                "UPDATE settings SET value = ?1 WHERE key = 'window_height'",
+                [height.to_string()],
+            )
+            .unwrap();
+            run(&conn).unwrap();
+            assert_eq!(read("window_height"), height);
+        }
     }
 
     #[test]

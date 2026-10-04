@@ -22,11 +22,11 @@
 
   // Base window dimensions (natural/default size).
   const BASE_W = 360;
-  const BASE_H = 478;
+  const BASE_H = 450;
   const TITLEBAR_H = 40;
 
   // Compact mode: when either dimension drops below this threshold,
-  // hide non-essential elements (footer, label, play/pause) to show
+  // hide non-essential elements (footer, play/pause) to show
   // only the timer dial — like an Apple Watch face.
   const COMPACT_THRESHOLD = 300;
 
