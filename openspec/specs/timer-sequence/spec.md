@@ -121,7 +121,7 @@ The two message variants SHALL be distinct localisation keys so they can be tran
 
 ### Requirement: Session work count
 
-`SequenceState` SHALL expose a `session_work_count: u32` field that starts at 1 and increments by 1 each time `advance()` enters a Work round. Unlike `work_round_number`, it SHALL never reset at cycle boundaries — only a call to `reset()` returns it to 1. It is included in `TimerSnapshot` and surfaced to the frontend as a session counter.
+`SequenceState` SHALL expose a `session_work_count: u32` field that starts at 1 and increments by 1 each time `advance()` enters a Work round. Unlike `work_round_number`, it SHALL not reset at cycle boundaries. Returning to a previous round restores that round's session count. A full session reset returns it to 1; resetting the current round preserves it. It is included in `TimerSnapshot` and surfaced to the frontend as a session counter.
 
 #### Scenario: session_work_count increments across cycle boundaries
 
@@ -129,9 +129,9 @@ The two message variants SHALL be distinct localisation keys so they can be tran
 - **AND** multiple work rounds complete across what would have been a long-break boundary
 - **THEN** `session_work_count` SHALL continue incrementing without resetting
 
-#### Scenario: session_work_count resets on timer reset
+#### Scenario: session_work_count resets on full session reset
 
-- **WHEN** the user triggers a timer reset
+- **WHEN** the user triggers a full session reset
 - **THEN** `session_work_count` SHALL be reset to 1
 
 #### Scenario: Round counter display adapts to long_breaks_enabled
@@ -140,3 +140,32 @@ The two message variants SHALL be distinct localisation keys so they can be tran
 - **THEN** the round counter SHALL display `work_round_number / work_rounds_total`
 - **WHEN** `long_breaks_enabled` is `false`
 - **THEN** the round counter SHALL display a localised "round N" label using `session_work_count`
+
+---
+
+### Requirement: Previous-round navigation
+
+The Back button SHALL return to the preceding visited round, restore its work and session counters, reset its elapsed time, and start it immediately. History SHALL follow actual transitions, including cycle boundaries and disabled breaks. The restored round SHALL use its duration from the current settings. Already recorded completed sessions SHALL remain in statistics.
+
+`TimerSnapshot` SHALL include `can_go_back: bool`. When false, the Back button SHALL be absent in both normal and compact modes, with Play/Pause retaining its position. A previous-round request without history SHALL leave the timer unchanged.
+
+#### Scenario: Returning from a work round
+
+- **GIVEN** Work(1) → ShortBreak(1) → Work(2)
+- **WHEN** the user presses Back
+- **THEN** ShortBreak(1) SHALL start from its full duration
+- **AND** another Back SHALL start Work(1), restore the session counter to 1, and hide Back
+
+#### Scenario: Returning across a cycle boundary
+
+- **GIVEN** the last long break has advanced to Work(1) of the next cycle
+- **WHEN** the user presses Back
+- **THEN** the preceding long break SHALL start with the preceding cycle's counters
+
+### Requirement: Manual navigation starts immediately
+
+Both Back and Next SHALL start the destination round immediately, including when the current timer is idle or paused. Automatic transitions after elapsed time SHALL continue to respect `auto_start_work` and `auto_start_break`.
+
+### Requirement: Footer Reset affects only the current round
+
+The footer Reset button SHALL stop the timer and restore the current round's full duration. It SHALL preserve the round type, both counters, and previous-round history. Its tooltip SHALL describe restarting the current round rather than clearing session progress.

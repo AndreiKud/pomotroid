@@ -20,6 +20,7 @@ export const timerToggle = () => invoke<void>('timer_toggle');
 export const timerReset = () => invoke<void>('timer_reset');
 export const timerRestartRound = () => invoke<void>('timer_restart_round');
 export const timerSkip = () => invoke<void>('timer_skip');
+export const timerPrevious = () => invoke<void>('timer_previous');
 export const getTimerState = () => invoke<TimerState>('timer_get_state');
 
 // --- Settings commands ---

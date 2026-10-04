@@ -21,6 +21,7 @@ pub enum TimerCommand {
     Reset,
     /// Immediately fires a `Complete` event (user-initiated skip).
     Skip,
+    Previous,
     /// Change the total duration; moves engine to Idle so caller must Start.
     Reconfigure { duration_secs: u32 },
     /// Update the stored duration without altering phase or elapsed time.
@@ -38,6 +39,7 @@ pub enum TimerEvent {
     Started { total_secs: u32 },
     Tick { elapsed_secs: u32, total_secs: u32 },
     Complete { skipped: bool },
+    Previous { confirm: Sender<bool> },
     Paused { elapsed_secs: u32 },
     Resumed { elapsed_secs: u32 },
     Reset,
@@ -99,6 +101,13 @@ enum Transition {
     Break,
 }
 
+fn request_previous(event_tx: &Sender<TimerEvent>) -> bool {
+    // Wait for the sequence owner so a rejected Back leaves the current timer intact.
+    let (confirm, response) = mpsc::channel();
+    event_tx.send(TimerEvent::Previous { confirm }).is_ok()
+        && response.recv().unwrap_or(false)
+}
+
 fn run_loop(
     duration_secs: u32,
     event_tx: Sender<TimerEvent>,
@@ -139,9 +148,15 @@ fn run_loop(
                     let _ = event_tx.send(TimerEvent::Reset);
                     Transition::Stay
                 }
-                // Skip while Idle: advance to the next round without starting.
+                // Report skips even while idle so navigation does not require Play first.
                 Ok(TimerCommand::Skip) => {
                     let _ = event_tx.send(TimerEvent::Complete { skipped: true });
+                    Transition::Stay
+                }
+                Ok(TimerCommand::Previous) => {
+                    if request_previous(&event_tx) {
+                        elapsed_secs = 0;
+                    }
                     Transition::Stay
                 }
                 Ok(TimerCommand::Shutdown) | Err(_) => Transition::Break,
@@ -167,6 +182,14 @@ fn run_loop(
                     elapsed_secs = 0;
                     let _ = event_tx.send(TimerEvent::Complete { skipped: true });
                     Transition::To(Phase::Idle)
+                }
+                Ok(TimerCommand::Previous) => {
+                    if request_previous(&event_tx) {
+                        elapsed_secs = 0;
+                        Transition::To(Phase::Idle)
+                    } else {
+                        Transition::Stay
+                    }
                 }
                 Ok(TimerCommand::Reconfigure { duration_secs: d }) => {
                     total_secs = d;
@@ -220,6 +243,14 @@ fn run_loop(
                         elapsed_secs = 0;
                         let _ = event_tx.send(TimerEvent::Complete { skipped: true });
                         Transition::To(Phase::Idle)
+                    }
+                    Ok(TimerCommand::Previous) => {
+                        if request_previous(&event_tx) {
+                            elapsed_secs = 0;
+                            Transition::To(Phase::Idle)
+                        } else {
+                            Transition::Stay
+                        }
                     }
                     Ok(TimerCommand::Reset) => {
                         elapsed_secs = 0;
@@ -292,6 +323,90 @@ mod tests {
             }
         }
         events
+    }
+
+    #[test]
+    fn previous_can_start_a_fresh_round_from_every_phase() {
+        for phase in 0..4 {
+            let (handle, rx) = spawn(100, TICK);
+            if phase > 0 {
+                handle.send(TimerCommand::Start);
+                while !matches!(
+                    rx.recv_timeout(Duration::from_secs(2)).unwrap(),
+                    TimerEvent::Tick { .. }
+                ) {}
+                if phase > 1 {
+                    handle.send(if phase == 2 {
+                        TimerCommand::Pause
+                    } else {
+                        TimerCommand::Suspend
+                    });
+                    while !matches!(
+                        rx.recv_timeout(Duration::from_secs(2)).unwrap(),
+                        TimerEvent::Paused { .. } | TimerEvent::Suspended { .. }
+                    ) {}
+                }
+            }
+            handle.send(TimerCommand::Previous);
+            loop {
+                match rx.recv_timeout(Duration::from_secs(2)).unwrap() {
+                    TimerEvent::Previous { confirm } => {
+                        handle.send(TimerCommand::Prime { duration_secs: 3 });
+                        handle.send(TimerCommand::Start);
+                        confirm.send(true).unwrap();
+                        break;
+                    }
+                    TimerEvent::Tick { .. } => {}
+                    event => panic!("unexpected event before navigation: {event:?}"),
+                }
+            }
+            let events = collect_until_complete(&rx, Duration::from_secs(2));
+            assert!(matches!(
+                events.first(),
+                Some(TimerEvent::Started { total_secs: 3 })
+            ));
+            let ticks: Vec<_> = events.iter().filter_map(|event| match event {
+                TimerEvent::Tick { elapsed_secs, total_secs } => Some((*elapsed_secs, *total_secs)),
+                _ => None,
+            }).collect();
+            assert_eq!(ticks, vec![(1, 3), (2, 3), (3, 3)]);
+            handle.send(TimerCommand::Shutdown);
+        }
+    }
+
+    #[test]
+    fn previous_at_session_start_preserves_a_paused_timer() {
+        let (handle, rx) = spawn(100, TICK);
+        handle.send(TimerCommand::Start);
+        while !matches!(
+            rx.recv_timeout(Duration::from_secs(2)).unwrap(),
+            TimerEvent::Tick { .. }
+        ) {}
+        handle.send(TimerCommand::Pause);
+        let paused_at = loop {
+            if let TimerEvent::Paused { elapsed_secs } =
+                rx.recv_timeout(Duration::from_secs(2)).unwrap()
+            {
+                break elapsed_secs;
+            }
+        };
+        handle.send(TimerCommand::Previous);
+        let TimerEvent::Previous { confirm } = rx.recv_timeout(Duration::from_secs(2)).unwrap()
+        else {
+            panic!("expected previous request");
+        };
+        confirm.send(false).unwrap();
+        assert!(rx.recv_timeout(TICK * 2).is_err());
+        handle.send(TimerCommand::Resume);
+        assert!(matches!(
+            rx.recv_timeout(Duration::from_secs(2)).unwrap(),
+            TimerEvent::Resumed { elapsed_secs } if elapsed_secs == paused_at
+        ));
+        assert!(matches!(
+            rx.recv_timeout(Duration::from_secs(2)).unwrap(),
+            TimerEvent::Tick { elapsed_secs, total_secs: 100 } if elapsed_secs == paused_at + 1
+        ));
+        handle.send(TimerCommand::Shutdown);
     }
 
     #[test]

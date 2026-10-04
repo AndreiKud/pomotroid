@@ -38,17 +38,24 @@ impl RoundType {
 #[derive(Debug, Clone, Serialize)]
 pub struct SequenceState {
     pub current_round: RoundType,
-    /// The round type that was active before `advance()` was last called.
+    /// The round type that was active before the most recent transition.
     /// `None` on the very first round (no preceding round exists).
     pub previous_round: Option<RoundType>,
     /// Which work round we're currently in (1-based). Displayed to the user.
     pub work_round_number: u32,
     /// Total work rounds before a long break (from settings).
     pub work_rounds_total: u32,
-    /// Monotonically-increasing count of work rounds since the last reset.
-    /// Unlike `work_round_number` this never resets at cycle boundaries,
-    /// so it can be used as a session counter when long breaks are disabled.
+    /// Position among work rounds in the session, including across cycle boundaries.
     pub session_work_count: u32,
+    #[serde(skip)]
+    history: Vec<RoundPosition>,
+}
+
+#[derive(Debug, Clone)]
+struct RoundPosition {
+    round: RoundType,
+    work_round_number: u32,
+    session_work_count: u32,
 }
 
 impl SequenceState {
@@ -59,6 +66,7 @@ impl SequenceState {
             work_round_number: 1,
             work_rounds_total,
             session_work_count: 1,
+            history: Vec::new(),
         }
     }
 
@@ -75,6 +83,11 @@ impl SequenceState {
     ///
     /// Call this when the engine fires `TimerEvent::Complete`.
     pub fn advance(&mut self, settings: &Settings) -> (RoundType, u32) {
+        self.history.push(RoundPosition {
+            round: self.current_round,
+            work_round_number: self.work_round_number,
+            session_work_count: self.session_work_count,
+        });
         self.previous_round = Some(self.current_round);
         self.current_round = match self.current_round {
             RoundType::Work => {
@@ -119,12 +132,27 @@ impl SequenceState {
         (self.current_round, duration)
     }
 
-    /// Reset the sequence to the initial state (used by the Reset command).
+    pub fn can_go_back(&self) -> bool {
+        !self.history.is_empty()
+    }
+
+    pub fn retreat(&mut self, settings: &Settings) -> Option<(RoundType, u32)> {
+        // Restore actual positions so settings changes cannot invent past breaks.
+        let previous = self.history.pop()?;
+        self.previous_round = Some(self.current_round);
+        self.current_round = previous.round;
+        self.work_round_number = previous.work_round_number;
+        self.session_work_count = previous.session_work_count;
+        Some((self.current_round, self.current_duration_secs(settings)))
+    }
+
+    /// Clear navigation history together with the session so Back cannot cross a full reset.
     pub fn reset(&mut self) {
         self.current_round = RoundType::Work;
         self.previous_round = None;
         self.work_round_number = 1;
         self.session_work_count = 1;
+        self.history.clear();
     }
 }
 
@@ -158,6 +186,77 @@ mod tests {
             long_breaks_enabled,
             ..Settings::default()
         }
+    }
+
+    #[test]
+    fn previous_retraces_cycles_for_all_break_settings() {
+        for short in [false, true] {
+            for long in [false, true] {
+                for interval in [1, 4] {
+                    let s = settings_with_flags(short, long);
+                    let mut seq = SequenceState::new(interval);
+                    let mut positions = Vec::new();
+                    for _ in 0..interval * 4 {
+                        positions.push((
+                            seq.current_round,
+                            seq.work_round_number,
+                            seq.session_work_count,
+                        ));
+                        seq.advance(&s);
+                    }
+                    for expected in positions.into_iter().rev() {
+                        let leaving = seq.current_round;
+                        assert!(seq.can_go_back());
+                        let (round, duration) = seq.retreat(&s).unwrap();
+                        assert_eq!(
+                            (round, seq.work_round_number, seq.session_work_count),
+                            expected
+                        );
+                        assert_eq!(duration, seq.current_duration_secs(&s));
+                        assert_eq!(seq.previous_round, Some(leaving));
+                    }
+                    assert!(!seq.can_go_back());
+                    assert!(seq.retreat(&s).is_none());
+                    assert_eq!(
+                        (seq.current_round, seq.work_round_number, seq.session_work_count),
+                        (RoundType::Work, 1, 1)
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn previous_restores_actual_history_with_current_durations() {
+        let mut s = settings(1500, 300, 900);
+        let mut seq = SequenceState::new(4);
+        seq.advance(&s);
+        seq.advance(&s);
+        s.short_breaks_enabled = false;
+        s.time_short_break_secs = 420;
+        assert_eq!(seq.retreat(&s), Some((RoundType::ShortBreak, 420)));
+        assert_eq!(seq.work_round_number, 1);
+        assert_eq!(seq.session_work_count, 1);
+        seq.retreat(&s);
+        assert_eq!(seq.advance(&s), (RoundType::Work, 1500));
+        assert_eq!(seq.work_round_number, 2);
+        assert_eq!(seq.session_work_count, 2);
+        seq.retreat(&s);
+        assert!(!seq.can_go_back());
+    }
+
+    #[test]
+    fn full_reset_clears_previous_rounds() {
+        let s = settings(1500, 300, 900);
+        let mut seq = SequenceState::new(4);
+        assert!(seq.retreat(&s).is_none());
+        assert_eq!(seq.previous_round, None);
+        seq.advance(&s);
+        seq.advance(&s);
+        seq.reset();
+        assert!(!seq.can_go_back());
+        assert!(seq.retreat(&s).is_none());
+        assert_eq!(seq.previous_round, None);
     }
 
     /// Simulate `n` full cycles (each cycle = work_rounds × work + breaks + long break)

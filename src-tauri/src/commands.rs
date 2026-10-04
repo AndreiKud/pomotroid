@@ -28,7 +28,7 @@ pub fn timer_toggle(timer: State<'_, TimerController>) {
     timer.toggle();
 }
 
-/// Reset the current round's timer without advancing the sequence.
+/// Keep full-session reset available independently of the footer's round reset.
 #[tauri::command]
 pub fn timer_reset(timer: State<'_, TimerController>) {
     timer.reset();
@@ -38,6 +38,11 @@ pub fn timer_reset(timer: State<'_, TimerController>) {
 #[tauri::command]
 pub fn timer_skip(timer: State<'_, TimerController>) {
     timer.skip();
+}
+
+#[tauri::command]
+pub fn timer_previous(timer: State<'_, TimerController>) {
+    timer.previous();
 }
 
 /// Restart the current round from zero without advancing the sequence.
@@ -787,4 +792,3 @@ mod tests {
         assert_eq!(n, 0);
     }
 }
-

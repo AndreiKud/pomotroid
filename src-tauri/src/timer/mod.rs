@@ -35,8 +35,8 @@ pub struct TimerSnapshot {
     pub is_paused: bool,
     pub work_round_number: u32,
     pub work_rounds_total: u32,
-    /// Monotonically-increasing focus round count since last reset. Used as a
-    /// session counter when long breaks are disabled.
+    pub can_go_back: bool,
+    /// Session position lets the UI keep counting when long breaks are disabled.
     pub session_work_count: u32,
 }
 
@@ -157,6 +157,11 @@ impl TimerController {
         self.engine.send(TimerCommand::Skip);
     }
 
+    pub fn previous(&self) {
+        log::info!("[timer] previous round");
+        self.engine.send(TimerCommand::Previous);
+    }
+
     pub fn suspend(&self) {
         self.engine.send(TimerCommand::Suspend);
     }
@@ -192,6 +197,7 @@ impl TimerController {
             is_paused: !shared.is_running && shared.elapsed_secs > 0,
             work_round_number: seq.work_round_number,
             work_rounds_total: seq.work_rounds_total,
+            can_go_back: seq.can_go_back(),
             session_work_count: seq.session_work_count,
         }
     }
@@ -301,8 +307,32 @@ fn listen_events(
                 }
             }
 
-            TimerEvent::Complete { skipped: was_skipped } => {
+            TimerEvent::Complete { .. } | TimerEvent::Previous { .. } => {
+                let (was_skipped, confirmation) = match event {
+                    TimerEvent::Complete { skipped } => (skipped, None),
+                    TimerEvent::Previous { confirm } => (true, Some(confirm)),
+                    _ => unreachable!(),
+                };
                 let completed_round = sequence.lock().unwrap().current_round.as_str().to_string();
+
+                let transition = {
+                    let mut seq = sequence.lock().unwrap();
+                    let s = settings.lock().unwrap();
+                    let next = if confirmation.is_some() {
+                        seq.retreat(&s)
+                    } else {
+                        Some(seq.advance(&s))
+                    };
+                    next.map(|(round, duration)| {
+                        (round, duration, should_auto_start(round, was_skipped, &s))
+                    })
+                };
+                let Some((next_round, next_duration, should_auto)) = transition else {
+                    if let Some(confirm) = confirmation {
+                        let _ = confirm.send(false);
+                    }
+                    continue;
+                };
                 log::info!(
                     "[timer] round complete type={completed_round} skipped={was_skipped}"
                 );
@@ -314,19 +344,11 @@ fn listen_events(
                     }
                 }
 
-                // Advance sequence.
-                let (next_round, next_duration, auto_start_work, auto_start_break) = {
-                    let mut seq = sequence.lock().unwrap();
-                    let s = settings.lock().unwrap();
-                    let (rt, dur) = seq.advance(&s);
-                    (rt, dur, s.auto_start_work, s.auto_start_break)
-                };
-
                 // Reset shared state for the new round.
                 {
                     let mut s = shared.lock().unwrap();
                     s.elapsed_secs = 0;
-                    s.is_running = false;
+                    s.is_running = should_auto;
                 }
 
                 // Arm the next round's duration without risking a late
@@ -382,11 +404,6 @@ fn listen_events(
                     websocket::broadcast_round_change(&ws, snap);
                 }
 
-                // Auto-start if configured.
-                let should_auto = match next_round {
-                    RoundType::Work => auto_start_work,
-                    _ => auto_start_break,
-                };
                 if should_auto {
                     log::debug!("[timer] auto-starting {}", next_round.as_str());
                     engine.send(TimerCommand::Start);
@@ -395,6 +412,9 @@ fn listen_events(
                     // Reset the tray menu to "Start" so it doesn't keep showing
                     // "Pause" from the round that just completed.
                     tray::update_menu_items(&tray, false, false);
+                }
+                if let Some(confirm) = confirmation {
+                    let _ = confirm.send(true);
                 }
             }
 
@@ -496,6 +516,91 @@ fn listen_events(
     }
 }
 
+fn should_auto_start(round: RoundType, manual: bool, settings: &Settings) -> bool {
+    manual
+        || match round {
+            RoundType::Work => settings.auto_start_work,
+            _ => settings.auto_start_break,
+        }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn manual_navigation_starts_but_completion_respects_preferences() {
+        for auto_start_work in [false, true] {
+            for auto_start_break in [false, true] {
+                let settings = Settings {
+                    auto_start_work,
+                    auto_start_break,
+                    ..Settings::default()
+                };
+                for round in [RoundType::Work, RoundType::ShortBreak, RoundType::LongBreak] {
+                    assert!(should_auto_start(round, true, &settings));
+                    let expected = if round == RoundType::Work {
+                        auto_start_work
+                    } else {
+                        auto_start_break
+                    };
+                    assert_eq!(should_auto_start(round, false, &settings), expected);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn restart_current_round_preserves_position_and_navigation_history() {
+        let settings = Settings::default();
+        let mut seq = SequenceState::new(4);
+        for _ in 0..3 {
+            seq.advance(&settings);
+        }
+        let duration = seq.current_duration_secs(&settings);
+        let (engine, rx) = engine::spawn(duration, Duration::from_millis(20));
+        let controller = TimerController {
+            engine,
+            sequence: Arc::new(Mutex::new(seq)),
+            settings: Arc::new(Mutex::new(settings)),
+            shared: Arc::new(Mutex::new(TimerShared {
+                elapsed_secs: 10,
+                is_running: true,
+            })),
+            tray: TrayState::new(),
+        };
+        controller.engine.send(TimerCommand::Start);
+        while !matches!(
+            rx.recv_timeout(Duration::from_secs(2)).unwrap(),
+            TimerEvent::Tick { .. }
+        ) {}
+        controller.restart_round();
+        loop {
+            match rx.recv_timeout(Duration::from_secs(2)).unwrap() {
+                TimerEvent::Reset => break,
+                TimerEvent::Tick { .. } => {}
+                event => panic!("unexpected event on restart: {event:?}"),
+            }
+        }
+        assert!(rx.recv_timeout(Duration::from_millis(50)).is_err());
+        let snap = controller.get_snapshot();
+        assert_eq!(snap.round_type, "short-break");
+        assert_eq!(snap.work_round_number, 2);
+        assert_eq!(snap.session_work_count, 2);
+        assert!(snap.can_go_back);
+        controller.engine.send(TimerCommand::Start);
+        assert!(matches!(
+            rx.recv_timeout(Duration::from_secs(2)).unwrap(),
+            TimerEvent::Started { total_secs } if total_secs == duration
+        ));
+        assert!(matches!(
+            rx.recv_timeout(Duration::from_secs(2)).unwrap(),
+            TimerEvent::Tick { elapsed_secs: 1, .. }
+        ));
+        controller.engine.send(TimerCommand::Shutdown);
+    }
+}
+
 fn build_snapshot(
     sequence: &Arc<Mutex<SequenceState>>,
     settings: &Arc<Mutex<Settings>>,
@@ -514,6 +619,7 @@ fn build_snapshot(
         is_paused: !sh.is_running && sh.elapsed_secs > 0,
         work_round_number: seq.work_round_number,
         work_rounds_total: seq.work_rounds_total,
+        can_go_back: seq.can_go_back(),
         session_work_count: seq.session_work_count,
     }
 }

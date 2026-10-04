@@ -4,7 +4,7 @@
   import { onMount } from 'svelte';
   import {
     timerToggle,
-    timerRestartRound,
+    timerPrevious,
     timerSkip,
     getTimerState,
     onTimerTick,
@@ -129,15 +129,22 @@
       </div>
 
       <div class="controls-wrapper">
-        <!-- Back: restart current round -->
-        <Tooltip text={m.tooltip_restart_round()}>
-          <button class="btn-side" onclick={timerRestartRound} aria-label="Restart round">
-            <svg width="18" height="18" viewBox="0 0 16 16">
-              <polygon points="15,1 6,8 15,15" fill="currentColor" />
-              <rect x="1" y="1" width="3" height="14" rx="1" fill="currentColor" />
-            </svg>
-          </button>
-        </Tooltip>
+        <div class="previous-control">
+          {#if state.can_go_back}
+            <Tooltip text={m.tooltip_previous_round()}>
+              <button
+                class="btn-side"
+                onclick={timerPrevious}
+                aria-label={m.tooltip_previous_round()}
+              >
+                <svg width="18" height="18" viewBox="0 0 16 16">
+                  <polygon points="15,1 6,8 15,15" fill="currentColor" />
+                  <rect x="1" y="1" width="3" height="14" rx="1" fill="currentColor" />
+                </svg>
+              </button>
+            </Tooltip>
+          {/if}
+        </div>
 
         <!-- Play / Pause — icon fades when state changes -->
         <button
@@ -231,6 +238,12 @@
   .btn-side:hover {
     color: var(--color-foreground);
     background: var(--color-hover);
+  }
+
+  .previous-control {
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
 
   .play-pause {

@@ -13,6 +13,7 @@ const initial: TimerState = {
   is_paused: false,
   work_round_number: 1,
   work_rounds_total: 4,
+  can_go_back: false,
   session_work_count: 1,
 };
 

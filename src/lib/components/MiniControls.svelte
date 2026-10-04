@@ -1,19 +1,23 @@
 <script lang="ts">
   import { fade } from 'svelte/transition';
-  import { timerToggle, timerRestartRound, timerSkip } from '$lib/ipc';
+  import { timerToggle, timerPrevious, timerSkip } from '$lib/ipc';
   import { timerState } from '$lib/stores/timer';
+  import * as m from '$paraglide/messages.js';
 
   let state = $derived($timerState);
 </script>
 
 <div class="mini-controls">
-  <!-- Restart current round -->
-  <button class="btn-side" onclick={timerRestartRound} aria-label="Restart round">
-    <svg width="10" height="10" viewBox="0 0 16 16">
-      <polygon points="15,1 6,8 15,15" fill="currentColor" />
-      <rect x="1" y="1" width="3" height="14" rx="1" fill="currentColor" />
-    </svg>
-  </button>
+  <div class="previous-control">
+    {#if state.can_go_back}
+      <button class="btn-side" onclick={timerPrevious} aria-label={m.tooltip_previous_round()}>
+        <svg width="10" height="10" viewBox="0 0 16 16">
+          <polygon points="15,1 6,8 15,15" fill="currentColor" />
+          <rect x="1" y="1" width="3" height="14" rx="1" fill="currentColor" />
+        </svg>
+      </button>
+    {/if}
+  </div>
 
   <!-- Play / Pause -->
   <button class="play-pause" onclick={timerToggle} aria-label={state.is_running ? 'Pause' : 'Play'}>
@@ -68,6 +72,11 @@
   .btn-side:hover {
     color: var(--color-foreground);
     background: var(--color-hover);
+  }
+
+  .previous-control {
+    width: 24px;
+    height: 24px;
   }
 
   .play-pause {
