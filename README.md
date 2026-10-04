@@ -1,3 +1,18 @@
+## This fork
+
+This fork of [Splode/Pomotroid](https://github.com/Splode/pomotroid) changes a few everyday interactions:
+
+- **Round navigation:** Back returns to the previous visited round and restores its counters; Back and Next start the destination round immediately. Back is hidden at the beginning of a session.
+- **Reset only the current round:** the footer Reset button stops and rewinds the current round while preserving session progress and navigation history.
+- **Adjust the current round:** −1/+1 minute buttons shorten or extend the current timer, even beyond its configured duration, without changing future rounds. Removing all remaining time advances to the next round.
+- **Easier volume control and stable tooltips:** the slider opens only over the volume button, stays reachable, and sits beside it so Next remains accessible. Tooltips are sized and positioned correctly from the first hover.
+- **Consistent theme colors:** the volume slider and Play/Pause hover use the current round's color, including custom themes, to make the active mode clearer.
+- **Faster startup:** parallel initialization, preloaded fonts, visible text while fonts load, and no entrance animation reduce unnecessary waiting.
+
+The installation links and updater below still point to upstream releases; build this fork locally to use these changes.
+
+---
+
 <div align="center">
   <img alt="Pomotroid" src=".github/images/pomotroid-title.png" width="800px">
 </div>
