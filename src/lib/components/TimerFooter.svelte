@@ -68,14 +68,13 @@
 
 <!-- Volume -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
-<div class="volume-wrapper">
-  <Tooltip text={localVolume === 0 ? m.tooltip_unmute() : m.tooltip_mute()}>
+<div class="volume-wrapper" onmouseleave={() => (showVolume = false)}>
+  <Tooltip text={localVolume === 0 ? m.tooltip_unmute() : m.tooltip_mute()} placement="below">
     <button
       class="btn-icon"
+      onmouseenter={() => (showVolume = true)}
       onclick={toggleMute}
       aria-label={localVolume === 0 ? 'Unmute' : 'Mute'}
-      onmouseenter={() => (showVolume = true)}
-      onmouseleave={() => (showVolume = false)}
     >
       {#if localVolume === 0}
         <svg width="16" height="16" viewBox="0 0 16 16">
@@ -115,17 +114,19 @@
   </Tooltip>
 
   {#if showVolume}
-    <div class="volume-slider-wrapper">
-      <input
-        type="range"
-        min="0"
-        max="1"
-        step="0.01"
-        value={localVolume}
-        oninput={handleVolumeChange}
-        class="volume-slider"
-        aria-label="Volume"
-      />
+    <div class="volume-popover">
+      <div class="volume-slider-wrapper">
+        <input
+          type="range"
+          min="0"
+          max="1"
+          step="0.01"
+          value={localVolume}
+          oninput={handleVolumeChange}
+          class="volume-slider"
+          aria-label="Volume"
+        />
+      </div>
     </div>
   {/if}
 </div>
@@ -180,23 +181,42 @@
 
   .volume-wrapper {
     position: relative;
+    width: 28px;
+    height: 28px;
+    place-self: center;
     display: flex;
     align-items: center;
     justify-content: center;
   }
 
-  .volume-slider-wrapper {
+  .volume-popover {
     position: absolute;
-    bottom: 100%;
-    left: 50%;
-    transform: translateX(-50%);
+    bottom: 0;
+    left: 100%;
+    padding-left: 6px;
+    z-index: 10;
+    pointer-events: none;
+  }
+
+  .volume-popover::before {
+    /* Bridge only beside the volume button so the gap cannot intercept skip clicks. */
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 6px;
+    height: 28px;
+    pointer-events: auto;
+  }
+
+  .volume-slider-wrapper {
+    pointer-events: auto;
     padding: 8px;
     background: var(--color-background-light);
     border-radius: 6px;
     display: flex;
     align-items: center;
     justify-content: center;
-    z-index: 10;
     /* Fixed size to contain the rotated slider without layout overflow. */
     width: 36px;
     height: 100px;
