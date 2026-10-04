@@ -114,7 +114,7 @@
 </script>
 
 <div class="timer-outer" class:compact={isCompact}>
-  <div class="timer" style="zoom: {uiScale}">
+  <div class="timer" style="zoom: {uiScale}; --color-current-round: {roundColor(state.round_type)}">
     <!-- Dial + display stacked (display centered over dial) -->
     <div class="dial-stack">
       <TimerDial snap={state} countdown={$settings.dial_countdown} />
@@ -253,8 +253,8 @@
   }
 
   .play-pause:hover {
-    color: var(--color-accent);
-    border-color: var(--color-accent);
+    color: var(--color-current-round);
+    border-color: var(--color-current-round);
     background: var(--color-hover);
   }
 

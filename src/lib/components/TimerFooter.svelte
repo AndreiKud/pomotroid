@@ -230,6 +230,6 @@
     width: 80px;
     transform: rotate(-90deg);
     cursor: pointer;
-    accent-color: var(--color-accent);
+    accent-color: var(--color-current-round);
   }
 </style>
