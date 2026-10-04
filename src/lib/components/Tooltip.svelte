@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { tick, type Snippet } from 'svelte';
+  import { onDestroy, tick, type Snippet } from 'svelte';
 
   interface Props {
     text: string;
@@ -12,10 +12,7 @@
 
   let visible = $state(false);
   let positioned = $state(false);
-  // Computed during updatePosition(); falls back to the placement prop when hidden.
-  let flipped = $state(false);
-  let actualPlacement = $derived(flipped ? 'below' : placement);
-  let tooltipStyle = $state('');
+  let actualPlacement = $state<'above' | 'below'>('above');
   let timer: ReturnType<typeof setTimeout> | undefined;
   let wrapper = $state<HTMLSpanElement | undefined>(undefined);
   let tooltipEl = $state<HTMLSpanElement | undefined>(undefined);
@@ -28,6 +25,10 @@
       timer = undefined;
       visible = true;
       await tick();
+      const element = tooltipEl;
+      // Font substitution can change both the line count and the anchor offset.
+      await document.fonts.ready;
+      if (!visible || tooltipEl !== element) return;
       updatePosition();
     };
     if (delay === 0) {
@@ -42,26 +43,65 @@
     timer = undefined;
     visible = false;
     positioned = false;
-    flipped = false;
-    tooltipStyle = '';
+  }
+
+  onDestroy(hide);
+
+  function attachTooltip(node: HTMLSpanElement) {
+    // Keep viewport coordinates independent of the timer's zoom and transforms.
+    document.body.appendChild(node);
+    const observer = new ResizeObserver(() => {
+      if (positioned) updatePosition();
+    });
+    observer.observe(node);
+    if (wrapper) observer.observe(wrapper);
+    window.addEventListener('resize', updatePosition);
+    window.addEventListener('scroll', updatePosition, true);
+    return {
+      destroy() {
+        observer.disconnect();
+        window.removeEventListener('resize', updatePosition);
+        window.removeEventListener('scroll', updatePosition, true);
+        node.remove();
+      },
+    };
   }
 
   function updatePosition() {
-    if (!wrapper || !tooltipEl) return;
+    if (!visible || !wrapper || !tooltipEl) return;
     const wRect = wrapper.getBoundingClientRect();
-    const tRect = tooltipEl.getBoundingClientRect();
     const centerX = wRect.left + wRect.width / 2;
     const pad = 8;
+    const gap = 8;
 
-    // Vertical: flip if too close to top edge.
-    flipped = wRect.top < 70 && placement === 'above';
+    // Only wrap labels that exceed the available width, avoiding an intrinsic
+    // text-width rounding difference turning a short label into two lines.
+    const maxWidth = Math.min(240, window.innerWidth - pad * 2);
+    tooltipEl.style.maxWidth = 'none';
+    tooltipEl.style.width = 'max-content';
+    tooltipEl.style.whiteSpace = 'nowrap';
+    const naturalWidth = Math.ceil(tooltipEl.getBoundingClientRect().width);
+    tooltipEl.style.width = `${Math.min(naturalWidth, maxWidth)}px`;
+    tooltipEl.style.maxWidth = `${maxWidth}px`;
+    tooltipEl.style.whiteSpace = naturalWidth > maxWidth ? 'normal' : 'nowrap';
+    const tRect = tooltipEl.getBoundingClientRect();
+
+    const roomAbove = wRect.top - gap - pad;
+    const roomBelow = window.innerHeight - wRect.bottom - gap - pad;
+    actualPlacement = placement;
+    if (placement === 'above' && tRect.height > roomAbove && roomBelow > roomAbove) {
+      actualPlacement = 'below';
+    } else if (placement === 'below' && tRect.height > roomBelow && roomAbove > roomBelow) {
+      actualPlacement = 'above';
+    }
 
     let top: number;
     if (actualPlacement === 'below') {
-      top = wRect.bottom + 8;
+      top = wRect.bottom + gap;
     } else {
-      top = wRect.top - 8 - tRect.height;
+      top = wRect.top - gap - tRect.height;
     }
+    top = Math.max(pad, Math.min(top, window.innerHeight - pad - tRect.height));
 
     // Horizontal: center on trigger, clamped within viewport.
     let left = centerX - tRect.width / 2;
@@ -71,8 +111,10 @@
     }
 
     // Arrow offset: always points at the trigger's horizontal center.
-    const arrowLeft = centerX - left;
-    tooltipStyle = `top:${top}px;left:${left}px;--arrow-left:${arrowLeft}px`;
+    const arrowLeft = Math.max(pad, Math.min(centerX - left, tRect.width - pad));
+    tooltipEl.style.top = `${top}px`;
+    tooltipEl.style.left = `${left}px`;
+    tooltipEl.style.setProperty('--arrow-left', `${arrowLeft}px`);
     positioned = true;
   }
 </script>
@@ -90,10 +132,10 @@
   {#if visible}
     <span
       bind:this={tooltipEl}
+      use:attachTooltip
       class="tooltip"
       class:below={actualPlacement === 'below'}
       class:positioned
-      style={tooltipStyle}
       id={tooltipId}
       role="tooltip">{text}</span
     >
@@ -114,6 +156,8 @@
       color-mix(in oklch, var(--color-foreground) 10%, var(--color-background))
     );
     position: fixed;
+    top: 0;
+    left: 0;
     background: var(--tooltip-bg);
     color: var(--color-foreground);
     font-size: 0.72rem;
@@ -121,8 +165,9 @@
     padding: 5px 9px;
     border-radius: 4px;
     width: max-content;
-    max-width: 240px;
-    white-space: normal;
+    max-width: min(240px, calc(100vw - 16px));
+    white-space: nowrap;
+    overflow-wrap: anywhere;
     text-align: center;
     pointer-events: none;
     z-index: 9999;
