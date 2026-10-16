@@ -6,6 +6,14 @@ Defines the behaviour of `SequenceState` — the component that determines which
 
 ## Requirements
 
+### Requirement: Recent round timestamps
+
+The main window SHALL display up to three recent round entries in its upper-left corner below the titlebar, using small text in both normal and compact modes. Each entry SHALL show `W: HH:MM` for work or `R: HH:MM` for either break type, in local 24-hour time, oldest first and newest last.
+
+The first start of a session and every automatic or manual round transition, including Back and consecutive work rounds with breaks disabled, SHALL record the destination round and its wall-clock timestamp. Pausing, resuming, changing duration, or restarting the current round SHALL preserve the entries without adding duplicates. A full session reset SHALL clear the entries.
+
+The backend SHALL retain the latest three entries for the current session and include them as `recent_round_changes` in timer snapshots, so reopening the frontend preserves them while the app is running.
+
 ### Requirement: Short breaks can be independently disabled
 
 The system SHALL support a `short_breaks_enabled` setting (default `true`). When `false`, the sequence SHALL skip ShortBreak rounds entirely: a Work round that would normally advance to ShortBreak SHALL instead advance directly to the next Work round, incrementing `work_round_number` by one. All other sequence behaviour (long breaks, counter reset at the long-break point) SHALL be unaffected.

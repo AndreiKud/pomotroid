@@ -3,6 +3,7 @@
   import { onMount, tick } from 'svelte';
   import Titlebar from '$lib/components/Titlebar.svelte';
   import Timer from '$lib/components/Timer.svelte';
+  import RoundHistory from '$lib/components/RoundHistory.svelte';
   import { getSettings, getThemes, onSettingsChanged, onThemesChanged } from '$lib/ipc';
   import { settings } from '$lib/stores/settings';
   import { applyTheme } from '$lib/stores/theme';
@@ -183,6 +184,7 @@
 <div class="app">
   <Titlebar />
   <main class:compact={isCompact}>
+    <RoundHistory {isCompact} />
     <Timer {isCompact} {uiScale} />
   </main>
 </div>
@@ -197,6 +199,7 @@
   }
 
   main {
+    position: relative;
     flex: 1;
     display: flex;
     align-items: center;
