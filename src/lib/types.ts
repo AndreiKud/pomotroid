@@ -2,6 +2,11 @@
 
 export type RoundType = 'work' | 'short-break' | 'long-break';
 
+export interface RoundChange {
+  round_type: RoundType;
+  changed_at_ms: number;
+}
+
 /** Mirrors Rust `TimerSnapshot` — emitted via timer:tick / timer:round-change events
  *  and returned by the `timer_get_state` IPC command. */
 export interface TimerState {
@@ -15,6 +20,7 @@ export interface TimerState {
   work_rounds_total: number; // total work rounds before long break
   can_go_back: boolean;
   session_work_count: number;
+  recent_round_changes: RoundChange[];
 }
 
 /** Mirrors Rust `Settings` struct returned by `settings_get`. */

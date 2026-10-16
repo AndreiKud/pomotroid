@@ -6,6 +6,7 @@
 /// - After short break → advance work_round_number, next round is Work.
 /// - After long break → reset work_round_number to 1, next round is Work.
 use serde::{Deserialize, Serialize};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::settings::Settings;
 
@@ -35,6 +36,12 @@ impl RoundType {
 // Sequence state
 // ---------------------------------------------------------------------------
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct RoundChange {
+    pub round_type: RoundType,
+    pub changed_at_ms: u64,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct SequenceState {
     pub current_round: RoundType,
@@ -47,6 +54,7 @@ pub struct SequenceState {
     pub work_rounds_total: u32,
     /// Position among work rounds in the session, including across cycle boundaries.
     pub session_work_count: u32,
+    pub recent_round_changes: Vec<RoundChange>,
     #[serde(skip)]
     history: Vec<RoundPosition>,
 }
@@ -66,8 +74,30 @@ impl SequenceState {
             work_round_number: 1,
             work_rounds_total,
             session_work_count: 1,
+            recent_round_changes: Vec::new(),
             history: Vec::new(),
         }
+    }
+
+    pub fn record_initial_start(&mut self) {
+        // Starting after a transition or restarting a round must not duplicate its timestamp.
+        if self.recent_round_changes.is_empty() {
+            self.record_round_change();
+        }
+    }
+
+    fn record_round_change(&mut self) {
+        let changed_at_ms = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as u64;
+        if self.recent_round_changes.len() == 3 {
+            self.recent_round_changes.remove(0);
+        }
+        self.recent_round_changes.push(RoundChange {
+            round_type: self.current_round,
+            changed_at_ms,
+        });
     }
 
     /// Duration of the current round in seconds, taken from settings.
@@ -128,6 +158,7 @@ impl SequenceState {
             self.session_work_count += 1;
         }
 
+        self.record_round_change();
         let duration = self.current_duration_secs(settings);
         (self.current_round, duration)
     }
@@ -143,6 +174,7 @@ impl SequenceState {
         self.current_round = previous.round;
         self.work_round_number = previous.work_round_number;
         self.session_work_count = previous.session_work_count;
+        self.record_round_change();
         Some((self.current_round, self.current_duration_secs(settings)))
     }
 
@@ -153,6 +185,7 @@ impl SequenceState {
         self.work_round_number = 1;
         self.session_work_count = 1;
         self.history.clear();
+        self.recent_round_changes.clear();
     }
 }
 
@@ -163,6 +196,59 @@ impl SequenceState {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn recent_changes_keep_three_destinations_in_visit_order() {
+        let settings = Settings::default();
+        let mut seq = SequenceState::new(1);
+        assert!(seq.recent_round_changes.is_empty());
+        seq.record_initial_start();
+        let first_start = seq.recent_round_changes.clone();
+        assert_eq!(first_start[0].round_type, RoundType::Work);
+        assert!(first_start[0].changed_at_ms > 0);
+        seq.record_initial_start();
+        assert_eq!(seq.recent_round_changes, first_start);
+
+        seq.advance(&settings);
+        seq.advance(&settings);
+        let retained = seq.recent_round_changes[1..].to_vec();
+        seq.retreat(&settings).unwrap();
+        assert_eq!(&seq.recent_round_changes[..2], retained.as_slice());
+        assert_eq!(
+            seq.recent_round_changes.iter().map(|change| change.round_type).collect::<Vec<_>>(),
+            vec![RoundType::LongBreak, RoundType::Work, RoundType::LongBreak]
+        );
+        let before_start = seq.recent_round_changes.clone();
+        seq.record_initial_start();
+        assert_eq!(seq.recent_round_changes, before_start);
+
+        seq.reset();
+        assert!(seq.recent_round_changes.is_empty());
+        assert!(seq.retreat(&settings).is_none());
+        assert!(seq.recent_round_changes.is_empty());
+        seq.record_initial_start();
+        assert_eq!(seq.recent_round_changes.len(), 1);
+        assert_eq!(seq.recent_round_changes[0].round_type, RoundType::Work);
+    }
+
+    #[test]
+    fn consecutive_work_rounds_each_get_a_timestamp() {
+        let settings = Settings {
+            short_breaks_enabled: false,
+            long_breaks_enabled: false,
+            ..Settings::default()
+        };
+        let mut seq = SequenceState::new(4);
+        seq.advance(&settings);
+        assert_eq!(seq.recent_round_changes.len(), 1);
+        seq.record_initial_start();
+        assert_eq!(seq.recent_round_changes.len(), 1);
+        for _ in 0..4 {
+            seq.advance(&settings);
+        }
+        assert_eq!(seq.recent_round_changes.len(), 3);
+        assert!(seq.recent_round_changes.iter().all(|change| change.round_type == RoundType::Work));
+    }
 
     /// Build a minimal `Settings` with the given durations.
     fn settings(work: u32, short: u32, long: u32) -> Settings {

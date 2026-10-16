@@ -15,6 +15,7 @@ const initial: TimerState = {
   work_rounds_total: 4,
   can_go_back: false,
   session_work_count: 1,
+  recent_round_changes: [],
 };
 
 export const timerState = writable<TimerState>(initial);

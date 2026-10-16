@@ -277,6 +277,7 @@ mod tests {
             work_rounds_total: 4,
             can_go_back: true,
             session_work_count: 1,
+            recent_round_changes: Vec::new(),
         }
     }
 

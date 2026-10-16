@@ -58,15 +58,7 @@
       timerState.set(initial);
 
       cleanups.push(
-        await onTimerStarted(({ total_secs }) => {
-          timerState.update((s) => ({
-            ...s,
-            total_secs,
-            elapsed_secs: 0,
-            is_running: true,
-            is_paused: false,
-          }));
-        }),
+        await onTimerStarted((snap) => timerState.set(snap)),
         await onTimerDurationChanged((snap) => timerState.set(snap)),
         await onTimerSuspended(({ elapsed_secs }) => {
           timerState.update((s) => ({ ...s, elapsed_secs, is_running: false, is_paused: true }));

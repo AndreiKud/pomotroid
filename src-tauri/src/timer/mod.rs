@@ -14,7 +14,7 @@ use crate::tray::{self, TrayState};
 use crate::websocket::{self, WsState};
 
 use engine::{EngineHandle, TimerCommand, TimerEvent};
-use sequence::{RoundType, SequenceState};
+use sequence::{RoundChange, RoundType, SequenceState};
 
 // ---------------------------------------------------------------------------
 // Snapshot — serialized to JSON for the frontend
@@ -38,6 +38,7 @@ pub struct TimerSnapshot {
     pub can_go_back: bool,
     /// Session position lets the UI keep counting when long breaks are disabled.
     pub session_work_count: u32,
+    pub recent_round_changes: Vec<RoundChange>,
 }
 
 // ---------------------------------------------------------------------------
@@ -252,6 +253,7 @@ fn listen_events(
         match event {
             TimerEvent::Started { total_secs } => {
                 log::info!("[timer] started total={total_secs}s");
+                sequence.lock().unwrap().record_initial_start();
                 {
                     let mut s = shared.lock().unwrap();
                     s.elapsed_secs = 0;
@@ -259,7 +261,7 @@ fn listen_events(
                     s.is_running = true;
                     s.is_paused = false;
                 }
-                let _ = app.emit("timer:started", serde_json::json!({ "total_secs": total_secs }));
+                let _ = app.emit("timer:started", build_snapshot(&sequence, &shared));
                 if let Some(ws) = app.try_state::<Arc<WsState>>() {
                     websocket::broadcast_started(&ws, total_secs);
                 }
@@ -627,6 +629,7 @@ mod tests {
         for _ in 0..3 {
             seq.advance(&settings);
         }
+        let recent_round_changes = seq.recent_round_changes.clone();
         let duration = seq.current_duration_secs(&settings);
         let (engine, rx) = engine::spawn(duration, Duration::from_millis(20));
         let controller = TimerController {
@@ -659,6 +662,7 @@ mod tests {
         assert_eq!(snap.round_type, "short-break");
         assert_eq!(snap.work_round_number, 2);
         assert_eq!(snap.session_work_count, 2);
+        assert_eq!(snap.recent_round_changes, recent_round_changes);
         assert!(snap.can_go_back);
         controller.engine.send(TimerCommand::Start);
         assert!(matches!(
@@ -691,5 +695,6 @@ fn build_snapshot(
         work_rounds_total: seq.work_rounds_total,
         can_go_back: seq.can_go_back(),
         session_work_count: seq.session_work_count,
+        recent_round_changes: seq.recent_round_changes.clone(),
     }
 }

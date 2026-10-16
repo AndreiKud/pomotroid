@@ -108,9 +108,8 @@ export const installUpdate = () => invoke<void>('install_update');
 
 // --- Event listeners ---
 
-export const onTimerStarted = (
-  cb: (payload: { total_secs: number }) => void
-): Promise<UnlistenFn> => listen<{ total_secs: number }>('timer:started', (e) => cb(e.payload));
+export const onTimerStarted = (cb: (state: TimerState) => void): Promise<UnlistenFn> =>
+  listen<TimerState>('timer:started', (e) => cb(e.payload));
 
 export const onTimerDurationChanged = (cb: (state: TimerState) => void): Promise<UnlistenFn> =>
   listen<TimerState>('timer:duration-changed', (e) => cb(e.payload));
