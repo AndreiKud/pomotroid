@@ -1,17 +1,20 @@
 ## This fork
 
-This fork of [Splode/Pomotroid](https://github.com/Splode/pomotroid) changes a few everyday interactions:
+User-facing differences from [Splode/Pomotroid](https://github.com/Splode/pomotroid):
 
-- **Round navigation:** Back returns to the previous visited round and restores its counters; Back and Next start the destination round immediately. Back is hidden at the beginning of a session.
-- **Reset only the current round:** the footer Reset button stops and rewinds the current round while preserving session progress and navigation history.
-- **Adjust the current round:** −1/+1 minute buttons shorten or extend the current timer, even beyond its configured duration, without changing future rounds. Removing all remaining time advances to the next round.
-- **Easier volume control and stable tooltips:** the slider opens only over the volume button, stays reachable, and sits beside it so Next remains accessible. Tooltips are sized and positioned correctly from the first hover.
-- **Consistent theme colors:** the volume slider and Play/Pause hover use the current round's color, including custom themes, to make the active mode clearer.
+- **Round navigation:** Back restores the previous round and its counters; Back and Next start immediately.
+- **Current-round controls:** footer Reset preserves session progress; −1/+1 minute adjusts only this round and skips ahead at zero.
+- **Recent round times:** the last three transitions appear as aligned `W: HH:MM` / `R: HH:MM` timestamps.
+- **Simpler layout:** round labels are removed and the default window is shorter.
+- **Polished controls:** reachable volume slider, stable tooltips, and colors matching the active round.
 - **Sound playback:** rapid round changes do not queue alerts; round alerts take priority over ticking.
 - **No statistics:** charts and session logging are removed; old statistics are deleted on upgrade.
-- **Faster startup:** parallel initialization, preloaded fonts, visible text while fonts load, and no entrance animation reduce unnecessary waiting.
+- **Faster startup:** less initialization delay, no entrance animation, and text visible while fonts load.
+- **External integrations:** WebSocket clients receive duration adjustments and recent round timestamps.
 
-The installation links and updater below still point to upstream releases; build this fork locally to use these changes.
+Automated builds and releases are disabled in this fork. The installation links and updater below still point to upstream releases; build locally to use these changes.
+
+The original upstream README follows unchanged.
 
 ---
 
@@ -28,6 +31,7 @@ The installation links and updater below still point to upstream releases; build
 
 - [Overview](#overview)
 - [Features](#features)
+- [Statistics](#statistics)
 - [Themes](#themes)
 - [Install](#install)
 - [WebSocket API](#websocket-api)
@@ -43,6 +47,7 @@ Built with [Tauri 2](https://tauri.app), [Rust](https://www.rust-lang.org), and 
 ## Features
 
 - **Configurable timer** — customise work duration, break durations, and the number of rounds per long break
+- **Statistics** — daily, weekly, and all-time session history with charts and a 52-week heatmap
 - **38 bundled themes** — including Dracula, Nord, Tokyo Night, Catppuccin, Gruvbox, Rose Piné, and more; auto-switches with your OS light/dark preference
 - **Custom themes** — drop a JSON file into the themes folder; applied instantly without a restart
 - **Localization** — 8 languages: English, Spanish, French, German, Japanese, Chinese (Simplified), Turkish, and Portuguese; auto-detects OS language
@@ -56,6 +61,14 @@ Built with [Tauri 2](https://tauri.app), [Rust](https://www.rust-lang.org), and 
 - **Always on top** — optionally keep the timer above other windows
 - **WebSocket server** — opt-in local server for stream overlays and external integrations
 - **Diagnostic logging** — rotating log file with a one-click shortcut to the log folder
+
+## Statistics
+
+Pomotroid tracks every completed session and surfaces the data across three views: a daily summary with an hourly breakdown, a weekly bar chart with streak tracking, and an all-time 52-week heatmap.
+
+<div align="center">
+  <img alt="Pomotroid statistics window" src=".github/images/pomotroid-stats.png" width="800px">
+</div>
 
 ## Themes
 

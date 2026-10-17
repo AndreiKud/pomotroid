@@ -2,6 +2,8 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+Follow the README maintenance rules in [AGENTS.md](./AGENTS.md).
+
 ## Overview
 
 Pomotroid is a Pomodoro timer desktop app built with **Tauri 2 + Rust** (backend) and **SvelteKit + Svelte 5** (frontend). The app has been fully rewritten from Electron+Vue to this stack.
