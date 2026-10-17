@@ -17,7 +17,7 @@ use std::io::Cursor;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use rodio::{Decoder, DeviceSinkBuilder, Player};
 
@@ -72,6 +72,8 @@ struct PlayRequest {
     /// Resolved custom file path, if one is configured for this cue.
     custom_path: Option<PathBuf>,
     volume: f32,
+    /// Discard delayed ticks rather than playing them after their intended moment.
+    requested_at: Instant,
     in_flight: Arc<Mutex<PlaybackState>>,
 }
 
@@ -171,6 +173,7 @@ impl AudioManager {
             cue,
             custom_path,
             volume,
+            requested_at: Instant::now(),
             in_flight: Arc::clone(&self.in_flight),
         });
         // Failed delivery drops the request, whose cleanup also needs this lock.
@@ -273,7 +276,10 @@ fn audio_thread(rx: mpsc::Receiver<PlayRequest>) {
     // automatically after a sleep/wake cycle that resets the OS audio
     // subsystem, avoiding a flood of "buffer underrun/overrun" errors.
     while let Ok(req) = rx.recv() {
-        if matches!(req.cue, AudioCue::Tick) && req.in_flight.lock().unwrap().alert {
+        if matches!(req.cue, AudioCue::Tick)
+            && (req.requested_at.elapsed() > Duration::from_millis(500)
+                || req.in_flight.lock().unwrap().alert)
+        {
             continue;
         }
         let mut device_sink = match DeviceSinkBuilder::open_default_sink() {

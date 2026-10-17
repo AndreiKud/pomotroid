@@ -7,7 +7,7 @@ User-facing differences from [Splode/Pomotroid](https://github.com/Splode/pomotr
 - **Recent round times:** the last three transitions appear as aligned `W: HH:MM` / `R: HH:MM` timestamps.
 - **Simpler layout:** round labels are removed and the default window is shorter.
 - **Polished controls:** reachable volume slider, stable tooltips, and colors matching the active round.
-- **Sound playback:** rapid round changes do not queue alerts; round alerts take priority over ticking.
+- **Sound playback:** round alerts interrupt ticks; repeated alerts cannot build a queue.
 - **No statistics:** charts and session logging are removed; old statistics are deleted on upgrade.
 - **Faster startup:** less initialization delay, no entrance animation, and text visible while fonts load.
 - **External integrations:** WebSocket clients receive duration adjustments and recent round timestamps.
