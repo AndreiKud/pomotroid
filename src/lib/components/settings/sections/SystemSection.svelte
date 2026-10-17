@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { settings } from '$lib/stores/settings';
-  import { setSetting, resetSettings, clearSessionHistory, traySupported } from '$lib/ipc';
+  import { setSetting, resetSettings, traySupported } from '$lib/ipc';
   import SettingsToggle from '$lib/components/settings/SettingsToggle.svelte';
   import * as m from '$paraglide/messages.js';
   import { setLocale } from '$lib/locale.svelte.js';
@@ -57,17 +57,11 @@
   });
 
   let confirmingReset = $state(false);
-  let confirmingClear = $state(false);
 
   async function handleReset() {
     const updated = await resetSettings();
     settings.set(updated);
     confirmingReset = false;
-  }
-
-  async function handleClear() {
-    await clearSessionHistory();
-    confirmingClear = false;
   }
 
   async function toggle(dbKey: string, current: boolean) {
@@ -240,21 +234,6 @@
   <div class="group-heading">{m.system_group_data()}</div>
 
   <div class="data-group">
-    {#if !confirmingClear}
-      <button class="data-row" onclick={() => (confirmingClear = true)}>
-        <span>Clear Session History</span>
-      </button>
-    {:else}
-      <div class="confirm-row">
-        <span class="confirm-label"
-          >This will permanently delete all session history. This cannot be undone.</span
-        >
-        <div class="confirm-actions">
-          <button class="confirm-cancel" onclick={() => (confirmingClear = false)}>Cancel</button>
-          <button class="confirm-destructive" onclick={handleClear}>Clear</button>
-        </div>
-      </div>
-    {/if}
     {#if !confirmingReset}
       <button class="data-row" onclick={() => (confirmingReset = true)}>
         <span>{m.about_reset_all()}</span>

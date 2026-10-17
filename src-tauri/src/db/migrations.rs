@@ -12,23 +12,11 @@ const MIGRATION_1: &str = "
         value TEXT NOT NULL
     );
 
-    CREATE TABLE IF NOT EXISTS sessions (
-        id            INTEGER PRIMARY KEY AUTOINCREMENT,
-        started_at    INTEGER NOT NULL,
-        ended_at      INTEGER,
-        round_type    TEXT NOT NULL CHECK(round_type IN ('work', 'short-break', 'long-break')),
-        duration_secs INTEGER NOT NULL CHECK(duration_secs > 0),
-        completed     INTEGER NOT NULL DEFAULT 0 CHECK(completed IN (0, 1))
-    );
-
     CREATE TABLE IF NOT EXISTS custom_themes (
         id     INTEGER PRIMARY KEY AUTOINCREMENT,
         name   TEXT NOT NULL UNIQUE,
         colors TEXT NOT NULL
     );
-
-    CREATE INDEX IF NOT EXISTS idx_sessions_started_at ON sessions(started_at);
-    CREATE INDEX IF NOT EXISTS idx_sessions_round_type ON sessions(round_type);
 
     INSERT INTO schema_version VALUES (1);
 ";
@@ -101,6 +89,12 @@ const MIGRATION_7: &str = "
     INSERT INTO schema_version VALUES (7);
 ";
 
+// Statistics are no longer collected; remove their stored history on upgrade.
+const MIGRATION_8: &str = "
+    DROP TABLE IF EXISTS sessions;
+    INSERT INTO schema_version VALUES (8);
+";
+
 /// Apply any pending migrations. Each migration is wrapped in a transaction
 /// so a partial failure leaves the database unchanged.
 pub fn run(conn: &Connection) -> Result<()> {
@@ -146,6 +140,10 @@ pub fn run(conn: &Connection) -> Result<()> {
         conn.execute_batch(&format!("BEGIN; {MIGRATION_7} COMMIT;"))?;
     }
 
+    if version < 8 {
+        conn.execute_batch(&format!("BEGIN; {MIGRATION_8} COMMIT;"))?;
+    }
+
     Ok(())
 }
 
@@ -181,7 +179,7 @@ mod tests {
         let v: i64 = conn
             .query_row("SELECT MAX(version) FROM schema_version", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(v, 7);
+        assert_eq!(v, 8);
     }
 
     #[test]
@@ -196,7 +194,7 @@ mod tests {
         ] {
             let conn = Connection::open_in_memory().unwrap();
             run(&conn).unwrap();
-            conn.execute("DELETE FROM schema_version WHERE version = 7", [])
+            conn.execute("DELETE FROM schema_version WHERE version >= 7", [])
                 .unwrap();
             for (key, value) in [
                 ("window_width", width),
@@ -239,7 +237,7 @@ mod tests {
     fn all_tables_created() {
         let conn = Connection::open_in_memory().unwrap();
         run(&conn).unwrap();
-        for table in &["settings", "sessions", "custom_themes", "schema_version"] {
+        for table in &["settings", "custom_themes", "schema_version"] {
             let count: i64 = conn
                 .query_row(
                     "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?1",

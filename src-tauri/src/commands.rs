@@ -1,6 +1,5 @@
 /// All #[tauri::command] functions exposed to the Svelte frontend via Tauri IPC.
 ///
-/// Commands are grouped by domain: Timer, Settings, Themes, Stats.
 /// Each command returns `Result<T, String>` so errors surface cleanly in JS.
 use log::LevelFilter;
 use tauri::{AppHandle, Emitter, Manager, State};
@@ -9,7 +8,7 @@ use std::sync::Arc;
 
 use crate::audio::{self, AudioManager};
 use crate::notifications;
-use crate::db::{queries, DbState};
+use crate::db::DbState;
 use crate::settings::{self, Settings};
 use crate::shortcuts;
 use crate::themes::{self, Theme};
@@ -325,71 +324,6 @@ pub fn themes_list(app: AppHandle) -> Result<Vec<Theme>, String> {
         .app_data_dir()
         .map_err(|e| e.to_string())?;
     Ok(themes::list_all(&data_dir))
-}
-
-// ---------------------------------------------------------------------------
-// CMD-04 — Sessions commands
-// ---------------------------------------------------------------------------
-
-/// Deletes all rows from the `sessions` table (irreversible bulk clear).
-/// Emits `sessions:cleared` so any open stats window can refresh immediately.
-#[tauri::command]
-pub fn sessions_clear(db: State<'_, DbState>, app: AppHandle) -> Result<(), String> {
-    log::info!("[sessions] clearing all session history");
-    let conn = db.lock().map_err(|e| e.to_string())?;
-    let n = conn.execute("DELETE FROM sessions", []).map_err(|e| {
-        log::error!("[sessions] failed to clear history: {e}");
-        e.to_string()
-    })?;
-    log::info!("[sessions] cleared {n} rows");
-    app.emit("sessions:cleared", ()).ok();
-    Ok(())
-}
-
-// CMD-05 — Stats commands
-// ---------------------------------------------------------------------------
-
-/// Batched stats for Today + This Week tabs (minimises IPC round-trips).
-#[tauri::command]
-pub fn stats_get_detailed(db: State<'_, DbState>) -> Result<DetailedStats, String> {
-    let conn = db.lock().map_err(|e| e.to_string())?;
-    let today = queries::get_daily_stats(&conn).map_err(|e| {
-        log::error!("[stats] failed to query daily stats: {e}");
-        e.to_string()
-    })?;
-    let week = queries::get_weekly_stats(&conn).map_err(|e| {
-        log::error!("[stats] failed to query weekly stats: {e}");
-        e.to_string()
-    })?;
-    let streak = queries::get_streak(&conn).map_err(|e| {
-        log::error!("[stats] failed to query streak: {e}");
-        e.to_string()
-    })?;
-    Ok(DetailedStats { today, week, streak })
-}
-
-/// Heatmap data + lifetime totals for the All Time tab.
-#[tauri::command]
-pub fn stats_get_heatmap(db: State<'_, DbState>) -> Result<HeatmapStats, String> {
-    let conn = db.lock().map_err(|e| e.to_string())?;
-    let entries = queries::get_heatmap_data(&conn).map_err(|e| {
-        log::error!("[stats] failed to query heatmap data: {e}");
-        e.to_string()
-    })?;
-    let raw = queries::get_all_time_stats(&conn).map_err(|e| {
-        log::error!("[stats] failed to query all-time stats: {e}");
-        e.to_string()
-    })?;
-    let streak = queries::get_streak(&conn).map_err(|e| {
-        log::error!("[stats] failed to query streak for heatmap: {e}");
-        e.to_string()
-    })?;
-    Ok(HeatmapStats {
-        entries,
-        total_rounds: raw.completed_work_sessions as u32,
-        total_hours: (raw.total_work_secs / 3600) as u32,
-        longest_streak: streak.longest,
-    })
 }
 
 // ---------------------------------------------------------------------------
@@ -737,67 +671,5 @@ fn cue_to_name_key(cue: &str) -> Result<&'static str, String> {
         "short_break_alert" => Ok("custom_short_break_alert_name"),
         "long_break_alert" => Ok("custom_long_break_alert_name"),
         _ => Err(format!("unknown audio cue: '{cue}'")),
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Stats payload types
-// ---------------------------------------------------------------------------
-
-/// Batched payload for Today + This Week tabs.
-#[derive(serde::Serialize)]
-pub struct DetailedStats {
-    pub today: queries::DailyStats,
-    pub week: Vec<queries::DayStat>,
-    pub streak: queries::StreakInfo,
-}
-
-/// Payload for the All Time tab.
-#[derive(serde::Serialize)]
-pub struct HeatmapStats {
-    pub entries: Vec<queries::HeatmapEntry>,
-    pub total_rounds: u32,
-    pub total_hours: u32,
-    pub longest_streak: u32,
-}
-
-#[cfg(test)]
-mod tests {
-    use rusqlite::Connection;
-    use crate::db::migrations;
-
-    fn setup() -> Connection {
-        let conn = Connection::open_in_memory().unwrap();
-        migrations::run(&conn).unwrap();
-        conn
-    }
-
-    fn seed_sessions(conn: &Connection) {
-        conn.execute_batch("
-            INSERT INTO sessions (started_at, ended_at, round_type, duration_secs, completed)
-            VALUES (1000, 1060, 'work', 60, 1),
-                   (2000, 2300, 'short-break', 300, 1);
-        ").unwrap();
-    }
-
-    #[test]
-    fn sessions_clear_removes_all_rows() {
-        let conn = setup();
-        seed_sessions(&conn);
-        let before: i64 = conn.query_row("SELECT COUNT(*) FROM sessions", [], |r| r.get(0)).unwrap();
-        assert_eq!(before, 2);
-
-        let n = conn.execute("DELETE FROM sessions", []).unwrap();
-        assert_eq!(n, 2);
-
-        let after: i64 = conn.query_row("SELECT COUNT(*) FROM sessions", [], |r| r.get(0)).unwrap();
-        assert_eq!(after, 0);
-    }
-
-    #[test]
-    fn sessions_clear_on_empty_table_returns_zero() {
-        let conn = setup();
-        let n = conn.execute("DELETE FROM sessions", []).unwrap();
-        assert_eq!(n, 0);
     }
 }

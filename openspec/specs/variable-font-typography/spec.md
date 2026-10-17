@@ -22,7 +22,7 @@ The app SHALL embed Mona Sans as a variable font and apply it as the primary fon
 
 ### Requirement: Optical sizing adapts automatically to font size
 
-The app SHALL enable `font-optical-sizing: auto` globally so the optical-size axis adjusts letterform contrast and spacing based on each element's rendered font size, including SVG text elements in the stats views.
+The app SHALL enable `font-optical-sizing: auto` globally so the optical-size axis adjusts letterform contrast and spacing based on each element's rendered font size.
 
 #### Scenario: Large display text uses display-optimized forms
 

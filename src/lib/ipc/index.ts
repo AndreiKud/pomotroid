@@ -9,8 +9,6 @@ import type {
   Settings,
   Theme,
   CustomAudioInfo,
-  DetailedStats,
-  HeatmapStats,
   UpdateInfo,
 } from '$lib/types';
 
@@ -77,18 +75,6 @@ export const getLogDir = () => invoke<string>('get_log_dir');
 /** Return the compile-time build version string (e.g. `1.0.0-dev.80+20b2d87`). */
 export const appVersion = () => invoke<string>('app_version');
 
-// --- Sessions commands ---
-
-export const clearSessionHistory = () => invoke<void>('sessions_clear');
-
-// --- Stats commands ---
-
-/** Daily + weekly data + streak in one call (Today and This Week tabs). */
-export const statsGetDetailed = () => invoke<DetailedStats>('stats_get_detailed');
-
-/** Heatmap entries + lifetime totals (All Time tab). */
-export const statsGetHeatmap = () => invoke<HeatmapStats>('stats_get_heatmap');
-
 // --- Platform commands ---
 
 export const accessibilityTrusted = () => invoke<boolean>('accessibility_trusted');
@@ -142,6 +128,3 @@ export const onSettingsChanged = (cb: (settings: Settings) => void): Promise<Unl
 
 export const onThemesChanged = (cb: (themes: Theme[]) => void): Promise<UnlistenFn> =>
   listen<Theme[]>('themes:changed', (e) => cb(e.payload));
-
-export const onSessionsCleared = (cb: () => void): Promise<UnlistenFn> =>
-  listen<void>('sessions:cleared', () => cb());

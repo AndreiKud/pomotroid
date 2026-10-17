@@ -77,23 +77,6 @@ All must pass before submitting a pull request. The CI pipeline runs them automa
 
 If you use VS Code, formatting happens automatically on save — install the [Prettier](https://marketplace.visualstudio.com/items?itemName=esbenp.prettier-vscode) and [Svelte for VS Code](https://marketplace.visualstudio.com/items?itemName=svelte.svelte-vscode) extensions.
 
-### Seeding test data
-
-To populate the statistics views with realistic historical data, use the seed script (requires Python 3, no extra dependencies):
-
-```bash
-# Preview what would be inserted — no database changes
-python3 scripts/seed-db.py --dry-run
-
-# Seed ~2 years of session history (default)
-python3 scripts/seed-db.py
-
-# Seed 1 year and wipe any existing sessions first
-python3 scripts/seed-db.py --days 365 --clear
-```
-
-The database must exist before seeding — launch Pomotroid at least once to create it. The script resolves the platform-specific app-data path automatically; pass `--db PATH` to override.
-
 ---
 
 ## Project Structure
@@ -101,7 +84,7 @@ The database must exist before seeding — launch Pomotroid at least once to cre
 ```
 pomotroid/
 ├── src/                    # SvelteKit frontend (Svelte 5 runes)
-│   ├── routes/             # Page components (main timer, settings, stats)
+│   ├── routes/             # Page components (main timer, settings)
 │   └── lib/
 │       ├── components/     # Reusable UI components
 │       ├── ipc/            # Frontend wrappers for Tauri commands

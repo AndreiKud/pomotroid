@@ -68,7 +68,6 @@ The following controls in the timer window SHALL have tooltips with the specifie
 | Element              | Location       | i18n key                                                  | Delay  |
 | -------------------- | -------------- | --------------------------------------------------------- | ------ |
 | Settings button      | Titlebar       | `tooltip_settings`                                        | 600 ms |
-| Statistics button    | Titlebar       | `tooltip_statistics`                                      | 600 ms |
 | Restart Round button | Timer controls | `tooltip_restart_round`                                   | 600 ms |
 | Skip button          | Timer controls | `tooltip_skip`                                            | 600 ms |
 | Reset button         | Footer         | `tooltip_reset`                                           | 600 ms |

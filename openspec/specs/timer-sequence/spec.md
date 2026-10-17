@@ -153,7 +153,7 @@ The two message variants SHALL be distinct localisation keys so they can be tran
 
 ### Requirement: Previous-round navigation
 
-The Back button SHALL return to the preceding visited round, restore its work and session counters, reset its elapsed time, and start it immediately. History SHALL follow actual transitions, including cycle boundaries and disabled breaks. The restored round SHALL use its duration from the current settings. Already recorded completed sessions SHALL remain in statistics.
+The Back button SHALL return to the preceding visited round, restore its work and session counters, reset its elapsed time, and start it immediately. History SHALL follow actual transitions, including cycle boundaries and disabled breaks. The restored round SHALL use its duration from the current settings.
 
 `TimerSnapshot` SHALL include `can_go_back: bool`. When false, the Back button SHALL be absent in both normal and compact modes, with Play/Pause retaining its position. A previous-round request without history SHALL leave the timer unchanged.
 
@@ -180,9 +180,9 @@ The footer Reset button SHALL stop the timer and restore the current round's ful
 
 ### Requirement: Adjust the current round by one minute
 
-The timer dial SHALL provide −1 minute and +1 minute buttons in normal and compact modes. Each press SHALL change the current round's remaining time by 60 seconds without changing elapsed time or the running/paused state. Extra time SHALL be allowed beyond the duration configured in settings. The dial, state queries, tray progress, and recorded session duration SHALL use the adjusted total.
+The timer dial SHALL provide −1 minute and +1 minute buttons in normal and compact modes. Each press SHALL change the current round's remaining time by 60 seconds without changing elapsed time or the running/paused state. Extra time SHALL be allowed beyond the duration configured in settings. The dial, state queries, and tray progress SHALL use the adjusted total.
 
-If subtracting a minute leaves no remaining time, the action SHALL behave like Next: advance and start the destination round, including from idle or paused. It SHALL be recorded as a manually skipped round.
+If subtracting a minute leaves no remaining time, the action SHALL behave like Next: advance and start the destination round, including from idle or paused. It SHALL follow the manual skip behavior.
 
 Adjustments SHALL NOT change saved settings. Reset, Back, Next, and natural round transitions SHALL restore the relevant configured duration. Unrelated settings changes SHALL NOT discard adjustments.
 

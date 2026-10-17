@@ -8,6 +8,7 @@ This fork of [Splode/Pomotroid](https://github.com/Splode/pomotroid) changes a f
 - **Easier volume control and stable tooltips:** the slider opens only over the volume button, stays reachable, and sits beside it so Next remains accessible. Tooltips are sized and positioned correctly from the first hover.
 - **Consistent theme colors:** the volume slider and Play/Pause hover use the current round's color, including custom themes, to make the active mode clearer.
 - **Sound playback:** rapid round changes do not queue alerts; round alerts take priority over ticking.
+- **No statistics:** charts and session logging are removed; old statistics are deleted on upgrade.
 - **Faster startup:** parallel initialization, preloaded fonts, visible text while fonts load, and no entrance animation reduce unnecessary waiting.
 
 The installation links and updater below still point to upstream releases; build this fork locally to use these changes.
@@ -27,7 +28,6 @@ The installation links and updater below still point to upstream releases; build
 
 - [Overview](#overview)
 - [Features](#features)
-- [Statistics](#statistics)
 - [Themes](#themes)
 - [Install](#install)
 - [WebSocket API](#websocket-api)
@@ -43,7 +43,6 @@ Built with [Tauri 2](https://tauri.app), [Rust](https://www.rust-lang.org), and 
 ## Features
 
 - **Configurable timer** — customise work duration, break durations, and the number of rounds per long break
-- **Statistics** — daily, weekly, and all-time session history with charts and a 52-week heatmap
 - **38 bundled themes** — including Dracula, Nord, Tokyo Night, Catppuccin, Gruvbox, Rose Piné, and more; auto-switches with your OS light/dark preference
 - **Custom themes** — drop a JSON file into the themes folder; applied instantly without a restart
 - **Localization** — 8 languages: English, Spanish, French, German, Japanese, Chinese (Simplified), Turkish, and Portuguese; auto-detects OS language
@@ -57,14 +56,6 @@ Built with [Tauri 2](https://tauri.app), [Rust](https://www.rust-lang.org), and 
 - **Always on top** — optionally keep the timer above other windows
 - **WebSocket server** — opt-in local server for stream overlays and external integrations
 - **Diagnostic logging** — rotating log file with a one-click shortcut to the log folder
-
-## Statistics
-
-Pomotroid tracks every completed session and surfaces the data across three views: a daily summary with an hourly breakdown, a weekly bar chart with streak tracking, and an all-time 52-week heatmap.
-
-<div align="center">
-  <img alt="Pomotroid statistics window" src=".github/images/pomotroid-stats.png" width="800px">
-</div>
 
 ## Themes
 

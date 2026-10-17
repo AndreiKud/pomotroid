@@ -82,7 +82,6 @@ All tooltip i18n keys SHALL be present in every supported locale message file. N
 | Key                             | English value                                                                                                                    |
 | ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
 | `tooltip_settings`              | `"Open Settings"`                                                                                                                |
-| `tooltip_statistics`            | `"Open Statistics"`                                                                                                              |
 | `tooltip_restart_round`         | `"Restart the current round from the beginning."`                                                                                |
 | `tooltip_skip`                  | `"Skip to the next round."`                                                                                                      |
 | `tooltip_reset`                 | `"Reset the timer to the first work round. Current session progress will be cleared."`                                           |

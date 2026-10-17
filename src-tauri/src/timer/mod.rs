@@ -8,7 +8,6 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager};
 
 use crate::audio::{AudioCue, AudioManager};
-use crate::db::{queries, DbState};
 use crate::settings::Settings;
 use crate::tray::{self, TrayState};
 use crate::websocket::{self, WsState};
@@ -73,7 +72,6 @@ impl TimerController {
         app: AppHandle,
         settings: Settings,
         tray: Arc<TrayState>,
-        db: DbState,
     ) -> Self {
         let seq = SequenceState::new(settings.long_break_interval);
         let duration = seq.current_duration_secs(&settings);
@@ -108,7 +106,6 @@ impl TimerController {
                         shared: shared_thread,
                         engine: engine_thread,
                         tray: tray_thread,
-                        db,
                     },
                 );
             })
@@ -235,7 +232,6 @@ struct ListenContext {
     shared: Arc<Mutex<TimerShared>>,
     engine: EngineHandle,
     tray: Arc<TrayState>,
-    db: DbState,
 }
 
 fn listen_events(
@@ -243,11 +239,9 @@ fn listen_events(
     event_rx: std::sync::mpsc::Receiver<TimerEvent>,
     ctx: ListenContext,
 ) {
-    let ListenContext { sequence, settings, shared, engine, tray, db } = ctx;
+    let ListenContext { sequence, settings, shared, engine, tray } = ctx;
     // Track last tray progress to throttle redraws to ≥ 1% delta.
     let mut last_tray_progress: f32 = -1.0;
-    // Active session row ID for recording (None = not started yet).
-    let mut current_session_id: Option<i64> = None;
 
     while let Ok(event) = event_rx.recv() {
         match event {
@@ -281,17 +275,6 @@ fn listen_events(
                     serde_json::json!({ "elapsed_secs": elapsed_secs, "total_secs": total_secs }),
                 );
 
-                // --- Session recording: start on first tick of a new round ---
-                if elapsed_secs == 1 && current_session_id.is_none() {
-                    let rt = sequence.lock().unwrap().current_round.as_str().to_string();
-                    if let Ok(conn) = db.lock() {
-                        match queries::insert_session(&conn, &rt, total_secs) {
-                            Ok(id) => current_session_id = Some(id),
-                            Err(e) => log::error!("[timer] failed to record session: {e}"),
-                        }
-                    }
-                }
-
                 // --- Tick sound ---
                 let rt = sequence.lock().unwrap().current_round.as_str().to_string();
                 if let Some(audio) = app.try_state::<Arc<AudioManager>>() {
@@ -317,13 +300,6 @@ fn listen_events(
                     let mut s = shared.lock().unwrap();
                     s.elapsed_secs = elapsed_secs;
                     s.total_secs = total_secs;
-                }
-                if let Some(id) = current_session_id {
-                    if let Ok(conn) = db.lock() {
-                        if let Err(e) = queries::update_session_duration(&conn, id, total_secs) {
-                            log::error!("[timer] failed to update session duration: {e}");
-                        }
-                    }
                 }
                 let snapshot = build_snapshot(&sequence, &shared);
                 let progress = if total_secs > 0 { elapsed_secs as f32 / total_secs as f32 } else { 0.0 };
@@ -364,13 +340,6 @@ fn listen_events(
                 log::info!(
                     "[timer] round complete type={completed_round} skipped={was_skipped}"
                 );
-
-                // --- Session recording: mark the completed round ---
-                if let Some(session_id) = current_session_id.take() {
-                    if let Ok(conn) = db.lock() {
-                        let _ = queries::complete_session(&conn, session_id, !was_skipped);
-                    }
-                }
 
                 // Reset shared state for the new round.
                 {
@@ -493,9 +462,6 @@ fn listen_events(
 
             TimerEvent::Reset => {
                 log::debug!("[timer] idle");
-                // Abandon the active session (leave DB row as-is).
-                current_session_id = None;
-
                 let duration = {
                     let seq = sequence.lock().unwrap();
                     let s = settings.lock().unwrap();

@@ -26,8 +26,6 @@ use commands::{
     notification_show,
     settings_get, settings_reset_defaults, settings_set,
     shortcuts_reload,
-    sessions_clear,
-    stats_get_detailed, stats_get_heatmap,
     themes_list,
     timer_adjust_time, timer_get_state, timer_previous, timer_reset, timer_restart_round, timer_skip, timer_toggle,
     window_set_visibility,
@@ -129,12 +127,10 @@ pub fn run() {
                 app.manage(audio);
             }
 
-            // --- Timer controller (needs settings + AppHandle + TrayState + DB) ---
             let timer = timer::TimerController::new(
                 app.handle().clone(),
                 initial_settings.clone(),
                 Arc::clone(&tray_state),
-                db.clone(),
             );
             app.manage(timer);
 
@@ -334,11 +330,9 @@ pub fn run() {
                             api.prevent_close();
                             let _ = win_for_close.hide();
                         } else {
-                            // Main window is truly closing — close child windows if open.
-                            for label in ["settings", "stats"] {
-                                if let Some(win) = app_for_close.get_webview_window(label) {
-                                    let _ = win.close();
-                                }
+                            // Avoid leaving Settings open without its parent timer window.
+                            if let Some(win) = app_for_close.get_webview_window("settings") {
+                                let _ = win.close();
                             }
                         }
                     }
@@ -381,11 +375,6 @@ pub fn run() {
             settings_reset_defaults,
             // Themes
             themes_list,
-            // Sessions
-            sessions_clear,
-            // Stats
-            stats_get_detailed,
-            stats_get_heatmap,
             // Window
             window_set_visibility,
             // Shortcuts

@@ -36,7 +36,6 @@ There are no automated tests in this codebase.
 
 - **`main`** (`src/routes/+page.svelte`) — the timer window
 - **`settings`** (`src/routes/settings/+page.svelte`) — opened via `new WebviewWindow('settings', ...)` from `Titlebar.svelte`
-- **`stats`** (`src/routes/stats/+page.svelte`) — statistics window
 
 ### IPC layer
 
@@ -53,7 +52,6 @@ Rust commands live in `src-tauri/src/commands.rs`. All commands return `Result<T
 - `timer:reset` — full `TimerSnapshot` (used to sync frontend after settings changes)
 - `settings:changed` — full `Settings` object
 - `themes:changed` — `Theme[]`
-- `sessions:cleared`
 
 ### TypeScript ↔ Rust type contract
 
@@ -98,7 +96,7 @@ Uses `@inlang/paraglide-js`. Message files are in `project.inlang/`. After editi
 | Module          | Purpose                                                                              |
 | --------------- | ------------------------------------------------------------------------------------ |
 | `audio`         | rodio-based audio playback, custom sound file management                             |
-| `db`            | SQLite connection, migrations, queries                                               |
+| `db`            | SQLite connection and schema migrations                                               |
 | `notifications` | OS notification wrapper                                                              |
 | `settings`      | Settings struct, DB load/save, defaults                                              |
 | `shortcuts`     | Global keyboard shortcut registration via tauri-plugin-global-shortcut               |

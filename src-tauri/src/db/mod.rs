@@ -1,5 +1,4 @@
 pub mod migrations;
-pub mod queries;
 
 use rusqlite::{Connection, Result};
 use std::sync::{Arc, Mutex};

@@ -66,27 +66,6 @@
     });
   }
 
-  async function openStats() {
-    const existing = await WebviewWindow.getByLabel('stats');
-    if (existing) {
-      await existing.show();
-      await existing.setFocus();
-      return;
-    }
-    new WebviewWindow('stats', {
-      url: '/stats',
-      title: 'Pomotroid — Statistics',
-      width: 840,
-      height: 520,
-      decorations: isMac,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      titleBarStyle: isMac ? ('Overlay' as any) : undefined,
-      hiddenTitle: isMac ? true : undefined,
-      resizable: false,
-      visible: false,
-    });
-  }
-
   async function minimize() {
     suppressRestoredTitlebarState();
     if ($settings.min_to_tray) {
@@ -166,30 +145,14 @@
   </Tooltip>
 {/snippet}
 
-{#snippet statsBtn()}
-  <Tooltip text={m.tooltip_statistics()}>
-    <button class="btn-icon" onclick={openStats} aria-label="Statistics">
-      <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-        <rect x="2" y="9" width="3" height="5" rx="0.5" fill="currentColor" opacity="0.6" />
-        <rect x="6.5" y="5" width="3" height="9" rx="0.5" fill="currentColor" opacity="0.8" />
-        <rect x="11" y="2" width="3" height="12" rx="0.5" fill="currentColor" />
-      </svg>
-    </button>
-  </Tooltip>
-{/snippet}
-
 <nav class="titlebar" class:suppress-hover={suppressTitlebarHover} data-tauri-drag-region>
-  <!-- Left: settings + stats buttons on Linux/Windows. On macOS the traffic
-       lights live here; the action buttons move to the right side instead. -->
+  <!-- Keep Settings opposite the native macOS traffic lights. -->
   {#if !isMac}
     {@render settingsBtn()}
-    {@render statsBtn()}
   {/if}
 
-  <!-- Right: settings + stats buttons on macOS, window controls on Linux/Windows. -->
   <div class="controls">
     {#if isMac}
-      {@render statsBtn()}
       {@render settingsBtn()}
     {:else}
       <button class="btn-icon" onclick={minimize} aria-label="Minimize">
