@@ -15,9 +15,9 @@
 ///   and falls back to the embedded bytes if the file is missing or unreadable.
 use std::io::Cursor;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use rodio::{Decoder, DeviceSinkBuilder, Player};
 
@@ -61,18 +61,29 @@ pub struct CustomAudioInfo {
     pub long_break_alert: Option<String>,
 }
 
+#[derive(Default)]
+struct PlaybackState {
+    tick: bool,
+    alert: bool,
+}
+
 struct PlayRequest {
     cue: AudioCue,
     /// Resolved custom file path, if one is configured for this cue.
     custom_path: Option<PathBuf>,
     volume: f32,
-    in_flight: Arc<AtomicBool>,
+    in_flight: Arc<Mutex<PlaybackState>>,
 }
 
 impl Drop for PlayRequest {
     fn drop(&mut self) {
-        // Release the slot on playback errors and failed delivery as well as normal completion.
-        self.in_flight.store(false, Ordering::Release);
+        // A finishing tick must not release the slot reserved by an incoming alert.
+        let mut in_flight = self.in_flight.lock().unwrap();
+        if matches!(self.cue, AudioCue::Tick) {
+            in_flight.tick = false;
+        } else {
+            in_flight.alert = false;
+        }
     }
 }
 
@@ -97,7 +108,7 @@ impl From<&Settings> for AudioSettings {
 /// Thread-safe audio manager. Register as `Arc<AudioManager>` in Tauri state.
 pub struct AudioManager {
     tx: mpsc::SyncSender<PlayRequest>,
-    in_flight: Arc<AtomicBool>,
+    in_flight: Arc<Mutex<PlaybackState>>,
     settings: Arc<Mutex<AudioSettings>>,
     pub custom_paths: Arc<Mutex<CustomAudioPaths>>,
 }
@@ -106,7 +117,8 @@ impl AudioManager {
     /// Spawn the audio thread and return an `Arc<AudioManager>`.
     /// If the system audio device is unavailable, returns `None` (app still works, just silent).
     pub fn new(initial: &Settings) -> Option<Arc<Self>> {
-        let (tx, rx) = mpsc::sync_channel::<PlayRequest>(1);
+        // An alert must be accepted even when the last tick is still waiting to play.
+        let (tx, rx) = mpsc::sync_channel::<PlayRequest>(2);
 
         std::thread::Builder::new()
             .name("audio".to_string())
@@ -116,7 +128,7 @@ impl AudioManager {
         log::info!("[audio] initialized: volume={:.0}%", initial.volume * 100.0);
         Some(Arc::new(Self {
             tx,
-            in_flight: Arc::new(AtomicBool::new(false)),
+            in_flight: Arc::new(Mutex::new(PlaybackState::default())),
             settings: Arc::new(Mutex::new(AudioSettings::from(initial))),
             custom_paths: Arc::new(Mutex::new(CustomAudioPaths::default())),
         }))
@@ -128,7 +140,7 @@ impl AudioManager {
     }
 
     /// Play the given cue at the current stored volume.
-    /// Non-blocking: ignores new cues while a sound is pending or playing.
+    /// Non-blocking: alerts interrupt ticks; repeated cues never form a backlog.
     pub fn play_cue(&self, cue: AudioCue) {
         let volume = self.settings.lock().unwrap().volume;
         if volume <= 0.0 {
@@ -144,19 +156,26 @@ impl AudioManager {
                 AudioCue::Tick => None,
             }
         };
-        // Reserve before enqueueing so rapid navigation cannot build a delayed sound backlog.
-        if self.in_flight
-            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
-            .is_err()
-        {
+        let is_tick = matches!(cue, AudioCue::Tick);
+        let mut in_flight = self.in_flight.lock().unwrap();
+        if in_flight.alert || (is_tick && in_flight.tick) {
             return;
         }
-        let _ = self.tx.try_send(PlayRequest {
+        if is_tick {
+            in_flight.tick = true;
+        } else {
+            in_flight.alert = true;
+        }
+        // Keep reservation and enqueueing ordered so a stale tick cannot arrive after its alert.
+        let delivery = self.tx.try_send(PlayRequest {
             cue,
             custom_path,
             volume,
             in_flight: Arc::clone(&self.in_flight),
         });
+        // Failed delivery drops the request, whose cleanup also needs this lock.
+        drop(in_flight);
+        drop(delivery);
     }
 
     /// Returns true if tick sounds are enabled for the given round type string.
@@ -254,6 +273,9 @@ fn audio_thread(rx: mpsc::Receiver<PlayRequest>) {
     // automatically after a sleep/wake cycle that resets the OS audio
     // subsystem, avoiding a flood of "buffer underrun/overrun" errors.
     while let Ok(req) = rx.recv() {
+        if matches!(req.cue, AudioCue::Tick) && req.in_flight.lock().unwrap().alert {
+            continue;
+        }
         let mut device_sink = match DeviceSinkBuilder::open_default_sink() {
             Ok(s) => s,
             Err(e) => {
@@ -298,9 +320,19 @@ fn audio_thread(rx: mpsc::Receiver<PlayRequest>) {
             }
         }
 
-        // Block until playback completes so device_sink stays alive for the
-        // full duration and drops cleanly afterward.
-        player.sleep_until_end();
+        if matches!(req.cue, AudioCue::Tick) {
+            // Yield promptly to a round alert instead of letting the final tick suppress it.
+            while !player.empty() {
+                if req.in_flight.lock().unwrap().alert {
+                    player.stop();
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(10));
+            }
+        } else {
+            // Keep the device alive until the alert finishes, without queuing repeated alerts.
+            player.sleep_until_end();
+        }
     }
 }
 
@@ -329,7 +361,7 @@ mod tests {
         };
         let mgr = AudioManager {
             tx: mpsc::sync_channel(1).0,
-            in_flight: Arc::new(AtomicBool::new(false)),
+            in_flight: Arc::new(Mutex::new(PlaybackState::default())),
             settings: Arc::new(Mutex::new(AudioSettings::from(&settings))),
             custom_paths: Arc::new(Mutex::new(CustomAudioPaths::default())),
         };
@@ -343,7 +375,7 @@ mod tests {
         let settings = Settings::default();
         let mgr = AudioManager {
             tx: mpsc::sync_channel(1).0,
-            in_flight: Arc::new(AtomicBool::new(false)),
+            in_flight: Arc::new(Mutex::new(PlaybackState::default())),
             settings: Arc::new(Mutex::new(AudioSettings::from(&settings))),
             custom_paths: Arc::new(Mutex::new(CustomAudioPaths::default())),
         };

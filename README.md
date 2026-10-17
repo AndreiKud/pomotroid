@@ -7,6 +7,7 @@ This fork of [Splode/Pomotroid](https://github.com/Splode/pomotroid) changes a f
 - **Adjust the current round:** −1/+1 minute buttons shorten or extend the current timer, even beyond its configured duration, without changing future rounds. Removing all remaining time advances to the next round.
 - **Easier volume control and stable tooltips:** the slider opens only over the volume button, stays reachable, and sits beside it so Next remains accessible. Tooltips are sized and positioned correctly from the first hover.
 - **Consistent theme colors:** the volume slider and Play/Pause hover use the current round's color, including custom themes, to make the active mode clearer.
+- **Sound playback:** rapid round changes do not queue alerts; round alerts take priority over ticking.
 - **Faster startup:** parallel initialization, preloaded fonts, visible text while fonts load, and no entrance animation reduce unnecessary waiting.
 
 The installation links and updater below still point to upstream releases; build this fork locally to use these changes.
